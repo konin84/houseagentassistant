@@ -1,0 +1,41 @@
+# ============================================================================
+#  payment-service - development
+# ============================================================================
+#  Run with: cd payment-service && ../mvnw quarkus:dev
+#  Cross-service dev mode needs a broker: docker compose up -d redpanda
+# ============================================================================
+
+quarkus:
+  http:
+    port: 8083
+
+  datasource:
+    jdbc:
+      url: jdbc:postgresql://localhost:5432/houseagent_payment
+
+  oidc:
+    enabled: false
+
+  hibernate-orm:
+    log:
+      sql: true
+
+  log:
+    category:
+      "com.digitalpartner.houseagent":
+        level: DEBUG
+
+  swagger-ui:
+    always-include: true
+
+kafka:
+  bootstrap:
+    servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+
+app:
+  invoicing:
+    # Quicker than production, so a change to the generator can be seen without
+    # waiting an hour for the next sweep.
+    interval: 1m
+  arrears:
+    interval: 5m

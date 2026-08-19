@@ -1,0 +1,116 @@
+# ============================================================================
+#  property-service - shared configuration
+# ============================================================================
+#  Everything here applies to every profile. Anything that legitimately differs
+#  between a laptop and a deployed environment lives in application-dev.yaml or
+#  application-prod.yaml, so that reading either one tells you what that
+#  environment actually does rather than what it inherits.
+#
+#  Test overrides stay in this file rather than in an application-test.yaml:
+#  tests are not a deployment target, they are a variation on the shared
+#  configuration, and keeping the two side by side makes the differences
+#  visible instead of hiding them one directory away.
+# ============================================================================
+
+quarkus:
+  application:
+    name: property-service
+
+  datasource:
+    db-kind: postgresql
+    # These defaults are dev- and test-shaped on purpose. application-prod.yaml
+    # replaces both with variables that have no fallback, so a missing secret
+    # fails the boot instead of quietly connecting as postgres/postgres.
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
+
+  hibernate-orm:
+    # Flyway owns the schema. 'validate' still catches mapping mistakes at
+    # startup, which is the useful half of schema generation without the
+    # destructive half.
+    schema-management:
+      strategy: validate
+    # Multi-tenancy by discriminator column: every entity annotated with
+    # @TenantId is transparently filtered by the agency resolved from the
+    # caller's JWT. See AgencyTenantResolver, and note that MarketplaceListing
+    # deliberately opts out.
+    multitenant: DISCRIMINATOR
+
+  flyway:
+    migrate-at-start: true
+    baseline-on-migrate: true
+
+  smallrye-openapi:
+    info-title: Property Service API
+    info-version: 1.0.0
+
+# --- Messaging -------------------------------------------------------------
+# Availability is derived from leases, so this service listens rather than being
+# told over REST. lease-service never calls property-service.
+mp:
+  messaging:
+    incoming:
+      lease-events:
+        connector: smallrye-kafka
+        topic: lease-events
+        value:
+          deserializer: org.apache.kafka.common.serialization.StringDeserializer
+        key:
+          deserializer: org.apache.kafka.common.serialization.StringDeserializer
+        group:
+          id: property-service
+        # Start from the beginning on a fresh group, so a newly deployed instance
+        # rebuilds its view of which houses are let instead of assuming
+        # everything is free.
+        auto:
+          offset:
+            reset: earliest
+
+# --- Images ----------------------------------------------------------------
+# Cloudinary hosts the bytes; this service stores only the public id. See
+# CloudinaryConfig for why the browser uploads directly rather than through here.
+app:
+  cloudinary:
+    # A folder per agency and house, which is also the prefix a signature is
+    # bound to - see HouseImageService.
+    root-folder: houses
+    # How long a signed upload request stays usable.
+    signature-ttl: 10M
+
+# ============================================================================
+#  Test
+# ============================================================================
+"%test":
+  quarkus:
+    datasource:
+      jdbc:
+        # A dedicated database, wiped and re-migrated before every run so tests
+        # never depend on rows left behind by the last one.
+        url: jdbc:postgresql://localhost:5432/houseagent_property_test
+    flyway:
+      clean-at-start: true
+      clean-disabled: false
+    # OIDC stays switched on - otherwise JsonWebToken has no producer and the
+    # role checks are never exercised - but with discovery off, so no server is
+    # contacted. @TestSecurity/@OidcSecurity mint the identity directly.
+    oidc:
+      discovery-enabled: false
+      auth-server-url: http://localhost:8180/realms/houseagent
+      jwks-path: protocol/openid-connect/certs
+  mp:
+    messaging:
+      incoming:
+        lease-events:
+          # No Docker and no broker, and assertions stay synchronous rather than
+          # timing-dependent.
+          connector: smallrye-in-memory
+  app:
+    cloudinary:
+      # Fixed, obviously fake credentials. The signature tests assert an exact
+      # hash, which is only meaningful against a known key.
+      cloud-name: test-cloud
+      api-key: "123456789012345"
+      api-secret: test-api-secret
+      # No real account to delete from, so a destroy would be a slow way of
+      # failing. The call is skipped; everything up to it still runs.
+      delete-remote-assets: false

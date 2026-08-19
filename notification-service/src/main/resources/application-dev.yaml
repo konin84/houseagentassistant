@@ -1,0 +1,49 @@
+# ============================================================================
+#  notification-service - development
+# ============================================================================
+#  Run with: cd notification-service && ../mvnw quarkus:dev
+#  Needs a broker and a mail catcher: docker compose up -d redpanda mailpit
+# ============================================================================
+
+quarkus:
+  http:
+    port: 8084
+
+  datasource:
+    jdbc:
+      url: jdbc:postgresql://localhost:5432/houseagent_notification
+
+  oidc:
+    enabled: false
+
+  # Mailpit catches everything at http://localhost:8025, so landlord
+  # notifications can be read during development without a real SMTP account and
+  # with no risk of emailing an actual person.
+  mailer:
+    from: ${MAIL_FROM:no-reply@houseagent.local}
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:1025}
+    start-tls: DISABLED
+    login: DISABLED
+
+  hibernate-orm:
+    log:
+      sql: true
+
+  log:
+    category:
+      "com.digitalpartner.houseagent":
+        level: DEBUG
+
+  swagger-ui:
+    always-include: true
+
+kafka:
+  bootstrap:
+    servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+
+app:
+  notification:
+    # Quicker than production, so a failed send can be seen retrying without
+    # waiting five minutes.
+    retry-interval: 30s

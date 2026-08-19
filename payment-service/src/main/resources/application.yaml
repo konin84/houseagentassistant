@@ -1,0 +1,107 @@
+# ============================================================================
+#  payment-service - shared configuration
+# ============================================================================
+#  Everything here applies to every profile. Anything that legitimately differs
+#  between a laptop and a deployed environment lives in application-dev.yaml or
+#  application-prod.yaml.
+# ============================================================================
+
+quarkus:
+  application:
+    name: payment-service
+
+  datasource:
+    db-kind: postgresql
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
+
+  hibernate-orm:
+    schema-management:
+      strategy: validate
+    multitenant: DISCRIMINATOR
+
+  flyway:
+    migrate-at-start: true
+    baseline-on-migrate: true
+
+  smallrye-openapi:
+    info-title: Payment Service API
+    info-version: 1.0.0
+
+# --- Messaging -------------------------------------------------------------
+mp:
+  messaging:
+    incoming:
+      # Lease events tell this service what to bill and when to stop.
+      lease-events:
+        connector: smallrye-kafka
+        topic: lease-events
+        value:
+          deserializer: org.apache.kafka.common.serialization.StringDeserializer
+        key:
+          deserializer: org.apache.kafka.common.serialization.StringDeserializer
+        group:
+          id: payment-service
+        # A fresh deployment rebuilds its billing replica from the log rather
+        # than assuming there is nothing to bill.
+        auto:
+          offset:
+            reset: earliest
+    outgoing:
+      # Only the outbox relay produces here; nothing publishes directly.
+      payment-events:
+        connector: smallrye-kafka
+        topic: payment-events
+        value:
+          serializer: org.apache.kafka.common.serialization.StringSerializer
+        key:
+          serializer: org.apache.kafka.common.serialization.StringSerializer
+        # Wait for all in-sync replicas. A settlement acknowledged but then lost
+        # would leave a landlord permanently un-notified about money that reached
+        # their account.
+        acks: all
+
+# --- Scheduled work --------------------------------------------------------
+app:
+  outbox:
+    poll-interval: 2s
+  invoicing:
+    interval: 1h
+    # Invoices are raised ahead of their due date so a renter can pay early and a
+    # missed run does not mean missed rent.
+    horizon-days: 45
+  arrears:
+    interval: 6h
+
+# ============================================================================
+#  Test
+# ============================================================================
+"%test":
+  quarkus:
+    datasource:
+      jdbc:
+        url: jdbc:postgresql://localhost:5432/houseagent_payment_test
+    flyway:
+      clean-at-start: true
+      clean-disabled: false
+    oidc:
+      discovery-enabled: false
+      auth-server-url: http://localhost:8180/realms/houseagent
+      jwks-path: protocol/openid-connect/certs
+    # Every scheduled job is driven explicitly in tests rather than by the clock,
+    # so assertions are deterministic. Money must not depend on when a timer
+    # happened to fire.
+    #
+    # The scheduler is switched off outright rather than given long intervals: a
+    # job that fires once unexpectedly re-derives invoice schedules against the
+    # real clock, which is how a test that pins three invoices finds twelve.
+    scheduler:
+      enabled: false
+  mp:
+    messaging:
+      incoming:
+        lease-events:
+          connector: smallrye-in-memory
+      outgoing:
+        payment-events:
+          connector: smallrye-in-memory

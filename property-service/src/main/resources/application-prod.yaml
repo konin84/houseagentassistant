@@ -1,0 +1,56 @@
+# ============================================================================
+#  property-service - production
+# ============================================================================
+#  Nothing here has a fallback. A variable that is missing should stop the boot
+#  with a named property, not start a service that quietly connects to the wrong
+#  database, trusts no identity provider, or accepts uploads it cannot host.
+# ============================================================================
+
+quarkus:
+  http:
+    port: ${HTTP_PORT:8081}
+
+  datasource:
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    jdbc:
+      url: ${DB_URL}
+      max-size: ${DB_POOL_MAX_SIZE:20}
+
+  # Migrations run at startup. Flyway takes a lock, so several replicas starting
+  # together is safe - one migrates and the rest wait.
+  flyway:
+    migrate-at-start: true
+
+  oidc:
+    enabled: true
+    auth-server-url: ${OIDC_AUTH_SERVER_URL}
+    client-id: ${OIDC_CLIENT_ID}
+    credentials:
+      secret: ${OIDC_CLIENT_SECRET}
+
+  hibernate-orm:
+    log:
+      sql: false
+
+  log:
+    level: INFO
+    category:
+      "com.digitalpartner.houseagent":
+        level: ${APP_LOG_LEVEL:INFO}
+
+  # The schema is public API and worth publishing; the browsable console is not.
+  swagger-ui:
+    always-include: false
+
+kafka:
+  bootstrap:
+    servers: ${KAFKA_BOOTSTRAP_SERVERS}
+
+app:
+  cloudinary:
+    cloud-name: ${CLOUDINARY_CLOUD_NAME}
+    api-key: ${CLOUDINARY_API_KEY}
+    # Signs upload requests. Never leaves the server, and never reaches a client
+    # - see CloudinarySignatures.
+    api-secret: ${CLOUDINARY_API_SECRET}

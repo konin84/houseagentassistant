@@ -1,0 +1,89 @@
+# Local infrastructure for houseagentassistant.
+#
+#   docker compose up -d
+#
+# PostgreSQL, Redpanda and Mailpit are what the four services need to run together:
+# the event backbone is how property-service learns a house has been let and how
+# notification-service learns rent has arrived, and Mailpit catches the resulting
+# email. None of them is needed to run the tests - every service swaps in an
+# in-memory connector and a mock mailbox under %test. Keycloak is here for the one
+# piece still outstanding: real tokens.
+#
+# There is deliberately no object storage. House images are hosted by Cloudinary,
+# which is an account rather than a container, and a local stand-in would only ever
+# test the stand-in.
+#
+# Note: all four services are currently configured against your local
+# postgresql-x64-18 Windows service on port 5432. If you switch to the container
+# below, change the port to 5433 in each service's application-dev.yaml, or stop the
+# Windows service first - they cannot both own 5432.
+
+services:
+
+  postgres:
+    image: postgres:18-alpine
+    container_name: hah-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      # Each service owns its own database. They are never joined across; a service
+      # that needs another's data asks over REST or listens for its events.
+      POSTGRES_MULTIPLE_DATABASES: houseagent_property,houseagent_lease,houseagent_payment,houseagent_notification
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres-init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    container_name: hah-keycloak
+    command: start-dev --import-realm
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+    ports:
+      - "8180:8080"
+    volumes:
+      - ./infra/keycloak:/opt/keycloak/data/import
+
+  # Kafka-compatible and far lighter than a Kafka + ZooKeeper pair for local work.
+  redpanda:
+    image: redpandadata/redpanda:v24.2.7
+    container_name: hah-redpanda
+    command:
+      - redpanda start
+      - --smp 1
+      - --overprovisioned
+      - --kafka-addr PLAINTEXT://0.0.0.0:29092,OUTSIDE://0.0.0.0:9092
+      - --advertise-kafka-addr PLAINTEXT://redpanda:29092,OUTSIDE://localhost:9092
+    ports:
+      - "9092:9092"
+      - "9644:9644"
+
+  redpanda-console:
+    image: redpandadata/console:v2.7.2
+    container_name: hah-redpanda-console
+    environment:
+      KAFKA_BROKERS: redpanda:29092
+    ports:
+      - "8090:8080"
+    depends_on:
+      - redpanda
+
+  # Catches every outbound email so landlord notifications can be inspected at
+  # http://localhost:8025 without a real SMTP account or risk of mailing anyone.
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: hah-mailpit
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+volumes:
+  postgres-data:

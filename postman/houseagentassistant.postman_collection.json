@@ -1,0 +1,2251 @@
+{
+  "info": {
+    "name": "houseagentassistant",
+    "description": "Every endpoint across the four services of houseagentassistant.\n\n## Against dev mode\n\nStart whichever services you need, each from its own folder:\n\n```\ncd property-service     && ../mvnw quarkus:dev\ncd lease-service        && ../mvnw quarkus:dev\ncd payment-service      && ../mvnw quarkus:dev\ncd notification-service && ../mvnw quarkus:dev\n```\n\nDev mode runs with OIDC switched off, so identity comes from three headers:\n\n| Header | Meaning |\n|---|---|\n| `X-Dev-Roles` | `AGENT`, `AGENCY_ADMIN`, `LANDLORD` or `RENTER` |\n| `X-Dev-Agency` | becomes the `agency_id` claim |\n| `X-Dev-Party` | becomes the `party_id` claim |\n\nThey are already set correctly on every request here. They are read by\n`DevIdentityAugmentor`, which carries `@IfBuildProfile(\"dev\")` and is therefore absent\nfrom a production build - a deployed service ignores them entirely. Send none of them\nand you are an anonymous visitor, which is how the marketplace folder works.\n\n## Against a deployed service\n\nPoint the four `*Url` variables at the deployment and set `accessToken` to a Keycloak\ntoken. The collection already sends it as a bearer token; the `X-Dev-*` headers become\ninert.\n\n## Suggested order\n\nRun the service folders top to bottom, in this order:\n\n1. **property-service** - creates a house and leaves `{{houseId}}` set\n2. **lease-service** - signs a lease against it\n3. **payment-service** - invoices raised from that lease\n4. **notification-service** - independent of the rest\n\nRequests save ids into collection variables as they go, so working down a folder needs\nno copying by hand. Watch the Postman console to see what was captured.\n\nTwo folders need more than the service itself:\n\n- **payment-service** needs `docker compose up -d redpanda`, or it never hears that a\n  lease was signed and has nothing to bill. Every list will be correctly empty.\n- **Agency - images** needs `CLOUDINARY_*` in `.env`, or the upload ticket answers 503.\n\nEverything else works with nothing running but the service and PostgreSQL.\n\n## Seeing isolation work\n\nMost of the interesting behaviour is what these endpoints *refuse*:\n\n- Change `X-Dev-Agency` to `{{otherAgencyId}}` on **Get house** - 404, not 403.\n- Send **Sign lease** twice - the second is 409, from a database constraint.\n- Send **Record a settled payment** twice with the same reference - 409, invoice untouched.\n- Change `X-Dev-Roles` to `AGENT` on **Delete house** - 403.\n",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "propertyUrl",
+      "value": "http://localhost:8081"
+    },
+    {
+      "key": "leaseUrl",
+      "value": "http://localhost:8082"
+    },
+    {
+      "key": "paymentUrl",
+      "value": "http://localhost:8083"
+    },
+    {
+      "key": "notificationUrl",
+      "value": "http://localhost:8084"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "description": "Empty in dev, where it is ignored. A Keycloak token otherwise."
+    },
+    {
+      "key": "agencyId",
+      "value": "agency-a"
+    },
+    {
+      "key": "otherAgencyId",
+      "value": "agency-b",
+      "description": "Swap into X-Dev-Agency to watch isolation answer 404."
+    },
+    {
+      "key": "landlordId",
+      "value": "11111111-1111-1111-1111-111111111111"
+    },
+    {
+      "key": "renterId",
+      "value": "22222222-2222-2222-2222-222222222222"
+    },
+    {
+      "key": "houseId",
+      "value": "",
+      "description": "Captured by Create house."
+    },
+    {
+      "key": "imageId",
+      "value": "",
+      "description": "Captured by Register uploaded image."
+    },
+    {
+      "key": "publicId",
+      "value": "",
+      "description": "Captured by Request upload ticket."
+    },
+    {
+      "key": "leaseId",
+      "value": "",
+      "description": "Captured by Sign lease."
+    },
+    {
+      "key": "invoiceId",
+      "value": "",
+      "description": "Captured by List invoices."
+    },
+    {
+      "key": "renterInvoiceId",
+      "value": "",
+      "description": "Captured by My invoices."
+    },
+    {
+      "key": "paymentId",
+      "value": "",
+      "description": "Captured by Record a settled payment."
+    },
+    {
+      "key": "payoutId",
+      "value": "",
+      "description": "Captured by List payouts."
+    }
+  ],
+  "item": [
+    {
+      "name": "property-service (8081)",
+      "description": "Houses, their photographs, and the public marketplace. Runs top to bottom: the house created first is the one every later request uses.",
+      "item": [
+        {
+          "name": "Agency - houses",
+          "description": "Scoped to the caller's agency by the @TenantId filter. No endpoint takes an agencyId - it comes from the identity, so there is nothing for a caller to tamper with. Another agency's house answers 404, indistinguishable from one that never existed: a 403 would confirm it is there.",
+          "item": [
+            {
+              "name": "Create house",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "AGENT",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Agency",
+                    "value": "{{agencyId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{propertyUrl}}/api/agency/houses",
+                  "host": [
+                    "{{propertyUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "agency",
+                    "houses"
+                  ]
+                },
+                "description": "Starts AVAILABLE and unpublished. Saves the new id into {{houseId}}, which the rest of this collection uses.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"landlordId\": \"{{landlordId}}\",\n  \"title\": \"Villa Cocody\",\n  \"description\": \"Bright three-bedroom villa with a courtyard.\",\n  \"address\": {\n    \"street\": \"Rue des Jardins\",\n    \"district\": \"Cocody\",\n    \"city\": \"Abidjan\",\n    \"countryCode\": \"CI\"\n  },\n  \"bedrooms\": 3,\n  \"bathrooms\": 2,\n  \"sizeSqm\": 180,\n  \"pricePerMonth\": \"150000.00\",\n  \"currency\": \"XOF\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// Saves an id so the next request in this folder just works.",
+                      "if (pm.response.code < 300) {",
+                      "    const body = pm.response.json();",
+                      "    const value = body.id;",
+                      "    if (value) {",
+                      "        pm.collectionVariables.set('houseId', value);",
+                      "        console.log('houseId =', value);",
+                      "    }",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "List houses",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "AGENT",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Agency",
+                    "value": "{{agencyId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{propertyUrl}}/api/agency/houses?page=0&size=20",
+                  "host": [
+                    "{{propertyUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "agency",
+                    "houses"
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "0"
+                    },
+                    {
+                      "key": "size",
+                      "value": "20"
+                    }
+                  ]
+                },
+                "description": "Only this agency's houses. Size is capped at 100."
+              }
+            },
+            {
+              "name": "Get house",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "AGENT",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Agency",
+                    "value": "{{agencyId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{propertyUrl}}/api/agency/houses/{{houseId}}",
+                  "host": [
+                    "{{propertyUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "agency",
+                    "houses",
+                    "{{houseId}}"
+                  ]
+                },
+                "description": "To see isolation work, change X-Dev-Agency to {{otherAgencyId}} and watch this become a 404."
+              }
+            },
+            {
+              "name": "Update house",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "AGENT",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Agency",
+                    "value": "{{agencyId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{propertyUrl}}/api/agency/houses/{{houseId}}",
+                  "host": [
+                    "{{propertyUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "agency",
+                    "houses",
+                    "{{houseId}}"
+                  ]
+                },
+                "description": "Partial: every field is optional and absent means leave unchanged.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"pricePerMonth\": \"165000.00\",\n  \"description\": \"Newly repainted.\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Publish to marketplace",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "AGENT",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Agency",
+                    "value": "{{agencyId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{propertyUrl}}/api/agency/houses/{{houseId}}/publication",
+                  "host": [
+                    "{{propertyUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "agency",
+                    "houses",
+                    "{{houseId}}",
+                    "publication"
+                  ]
+                },
+                "description": "Advertises the house. It only reaches the marketplace if it is also AVAILABLE - both must be true."
+              }
+            }
+          ]
+        },
+        {
+          "name": "Agency - images (Cloudinary)",
+          "description": "Three steps: sign an upload here, send the file to Cloudinary from the browser, then register the public id. The bytes never pass through this service.\n\nNeeds CLOUDINARY_* in .env. Without it the ticket endpoint answers 503 IMAGES_NOT_CONFIGURED and everything else still works.",
+          "item": [
+            {
+              "name": "Request upload ticket",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "AGENT",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Agency",
+                    "value": "{{agencyId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{propertyUrl}}/api/agency/houses/{{houseId}}/images/upload-ticket",
+                  "host": [
+                    "{{propertyUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "agency",
+                    "houses",
+                    "{{houseId}}",
+                    "images",
+                    "upload-ticket"
+                  ]
+                },
+                "description": "Returns a signature bound to one path under this agency and house, plus the form fields to post to Cloudinary. Saves {{publicId}}."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// Saves an id so the next request in this folder just works.",
+                      "if (pm.response.code < 300) {",
+                      "    const body = pm.response.json();",
+                      "    const value = body.publicId;",
+                      "    if (value) {",
+                      "        pm.collectionVariables.set('publicId', value);",
+                      "        console.log('publicId =', value);",
+                      "    }",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Register uploaded image",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "AGENT",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Agency",
+                    "value": "{{agencyId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{propertyUrl}}/api/agency/houses/{{houseId}}/images",
+                  "host": [
+                    "{{propertyUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "agency",
+                    "houses",
+                    "{{houseId}}",
+                    "images"
+                  ]
+                },
+                "description": "Step 3, and the security check: the public id must sit under the path it was signed for, or this is 403 FOREIGN_ASSET. The first image registered becomes the cover whatever you pass.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"publicId\": \"{{publicId}}\",\n  \"width\": 1600,\n  \"height\": 1200,\n  \"format\": \"jpg\",\n  \"bytes\": 482913,\n  \"cover\": false\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// Saves an id so the next request in this folder just works.",
+                      "if (pm.response.code < 300) {",
+                      "    const body = pm.response.json();",
+                      "    const value = body.id;",
+                      "    if (value) {",
+                      "        pm.collectionVariables.set('imageId', value);",
+                      "        console.log('imageId =', value);",
+                      "    }",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "List images",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "AGENT",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Agency",
+                    "value": "{{agencyId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{propertyUrl}}/api/agency/houses/{{houseId}}/images",
+                  "host": [
+                    "{{propertyUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "agency",
+                    "houses",
+                    "{{houseId}}",
+                    "images"
+                  ]
+                },
+                "description": "URLs are rendered from the stored public id per request, never stored - so changing a crop is a code change rather than a migration."
+              }
+            },
+            {
+              "name": "Set cover",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "AGENT",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Agency",
+                    "value": "{{agencyId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{propertyUrl}}/api/agency/houses/{{houseId}}/images/{{imageId}}/cover",
+                  "host": [
+                    "{{propertyUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "agency",
+                    "houses",
+                    "{{houseId}}",
+                    "images",
+                    "{{imageId}}",
+                    "cover"
+                  ]
+                },
+                "description": "Demotes whichever image held it. At most one cover per house is a partial unique index, not application logic."
+              }
+            },
+            {
+              "name": "Delete image",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "AGENT",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Agency",
+                    "value": "{{agencyId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{propertyUrl}}/api/agency/houses/{{houseId}}/images/{{imageId}}",
+                  "host": [
+                    "{{propertyUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "agency",
+                    "houses",
+                    "{{houseId}}",
+                    "images",
+                    "{{imageId}}"
+                  ]
+                },
+                "description": "Destroys the Cloudinary asset once the change commits. If it was the cover, the next image is promoted rather than leaving the listing without one."
+              }
+            }
+          ]
+        },
+        {
+          "name": "Public marketplace (anonymous)",
+          "description": "No identity at all - these requests send no X-Dev-* headers. Cross-agency on purpose, and the projection behind it holds only houses that are both AVAILABLE and published, so no query here needs an availability filter.",
+          "item": [
+            {
+              "name": "Search listings",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{propertyUrl}}/api/marketplace/listings?city=Abidjan&country=CI&minPrice=50000&maxPrice=500000&minBedrooms=2&page=0&size=20",
+                  "host": [
+                    "{{propertyUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "marketplace",
+                    "listings"
+                  ],
+                  "query": [
+                    {
+                      "key": "city",
+                      "value": "Abidjan"
+                    },
+                    {
+                      "key": "country",
+                      "value": "CI"
+                    },
+                    {
+                      "key": "minPrice",
+                      "value": "50000"
+                    },
+                    {
+                      "key": "maxPrice",
+                      "value": "500000"
+                    },
+                    {
+                      "key": "minBedrooms",
+                      "value": "2"
+                    },
+                    {
+                      "key": "page",
+                      "value": "0"
+                    },
+                    {
+                      "key": "size",
+                      "value": "20"
+                    }
+                  ]
+                },
+                "description": "Every parameter is optional - delete the ones you do not want. Size is capped at 100."
+              }
+            },
+            {
+              "name": "Get listing",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{propertyUrl}}/api/marketplace/listings/{{houseId}}",
+                  "host": [
+                    "{{propertyUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "marketplace",
+                    "listings",
+                    "{{houseId}}"
+                  ]
+                },
+                "description": "404 once the house is let or withdrawn: the projection simply stops holding it."
+              }
+            }
+          ]
+        },
+        {
+          "name": "Teardown - withdraw and delete",
+          "description": "Kept in a folder of its own, and last, so that running the service folder from top to bottom works: withdrawing or deleting the house first would leave every request below it looking at something that is no longer there.",
+          "item": [
+            {
+              "name": "Withdraw from marketplace",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "AGENT",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Agency",
+                    "value": "{{agencyId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{propertyUrl}}/api/agency/houses/{{houseId}}/publication",
+                  "host": [
+                    "{{propertyUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "agency",
+                    "houses",
+                    "{{houseId}}",
+                    "publication"
+                  ]
+                },
+                "description": "Takes it off the marketplace without changing availability. Run **Get listing** again afterwards to watch it 404."
+              }
+            },
+            {
+              "name": "Delete house",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "AGENCY_ADMIN",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Agency",
+                    "value": "{{agencyId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{propertyUrl}}/api/agency/houses/{{houseId}}",
+                  "host": [
+                    "{{propertyUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "agency",
+                    "houses",
+                    "{{houseId}}"
+                  ]
+                },
+                "description": "AGENCY_ADMIN only. Change X-Dev-Roles to AGENT to get a 403."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "lease-service (8082)",
+      "description": "Leases, and a landlord's view of their own tenancies. Needs a house, so run the property-service folder first.",
+      "item": [
+        {
+          "name": "Agency - leases",
+          "description": "Signing is guarded by a PostgreSQL exclusion constraint rather than by application logic, so two agents signing the same house at the same instant cannot both win. The loser gets 409 HOUSE_ALREADY_LET - including across agencies.",
+          "item": [
+            {
+              "name": "Sign lease",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "AGENT",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Agency",
+                    "value": "{{agencyId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{leaseUrl}}/api/agency/leases",
+                  "host": [
+                    "{{leaseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "agency",
+                    "leases"
+                  ]
+                },
+                "description": "Send this twice to see the constraint work. Saves {{leaseId}}.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"houseId\": \"{{houseId}}\",\n  \"renterId\": \"{{renterId}}\",\n  \"renterName\": \"Ama Kouassi\",\n  \"renterPhone\": \"+225 07 00 00 00\",\n  \"landlordId\": \"{{landlordId}}\",\n  \"houseReference\": \"Villa Cocody 12\",\n  \"rentAmount\": \"150000.00\",\n  \"currency\": \"XOF\",\n  \"cadence\": \"MONTHLY\",\n  \"dueDayOfMonth\": 5,\n  \"depositAmount\": \"300000.00\",\n  \"startDate\": \"2026-09-01\",\n  \"endDate\": \"2027-08-31\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// Saves an id so the next request in this folder just works.",
+                      "if (pm.response.code < 300) {",
+                      "    const body = pm.response.json();",
+                      "    const value = body.id;",
+                      "    if (value) {",
+                      "        pm.collectionVariables.set('leaseId', value);",
+                      "        console.log('leaseId =', value);",
+                      "    }",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "List leases",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "AGENT",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Agency",
+                    "value": "{{agencyId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{leaseUrl}}/api/agency/leases?page=0&size=20",
+                  "host": [
+                    "{{leaseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "agency",
+                    "leases"
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "0"
+                    },
+                    {
+                      "key": "size",
+                      "value": "20"
+                    }
+                  ]
+                },
+                "description": "This agency's leases only."
+              }
+            },
+            {
+              "name": "Get lease",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "AGENT",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Agency",
+                    "value": "{{agencyId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{leaseUrl}}/api/agency/leases/{{leaseId}}",
+                  "host": [
+                    "{{leaseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "agency",
+                    "leases",
+                    "{{leaseId}}"
+                  ]
+                },
+                "description": "Includes firstDueDate, derived from the start date and the agreed due day."
+              }
+            },
+            {
+              "name": "Record move-in",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "AGENT",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Agency",
+                    "value": "{{agencyId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{leaseUrl}}/api/agency/leases/{{leaseId}}/activation",
+                  "host": [
+                    "{{leaseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "agency",
+                    "leases",
+                    "{{leaseId}}",
+                    "activation"
+                  ]
+                },
+                "description": "PENDING_MOVE_IN to ACTIVE. The house was already unavailable before this - signing is what took it off the market."
+              }
+            }
+          ]
+        },
+        {
+          "name": "Landlord - portfolio",
+          "description": "No landlordId parameter anywhere: it comes from party_id. landlord_lease_view has no tenant filter, so that predicate is the entire access control - and a landlord's portfolio deliberately spans every agency they work with.",
+          "item": [
+            {
+              "name": "My leases",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "LANDLORD",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Party",
+                    "value": "{{landlordId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{leaseUrl}}/api/landlord/leases?currentOnly=true&page=0&size=20",
+                  "host": [
+                    "{{leaseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "landlord",
+                    "leases"
+                  ],
+                  "query": [
+                    {
+                      "key": "currentOnly",
+                      "value": "true"
+                    },
+                    {
+                      "key": "page",
+                      "value": "0"
+                    },
+                    {
+                      "key": "size",
+                      "value": "20"
+                    }
+                  ]
+                },
+                "description": "currentOnly=false for the full history including ended tenancies."
+              }
+            },
+            {
+              "name": "My lease",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "LANDLORD",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Party",
+                    "value": "{{landlordId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{leaseUrl}}/api/landlord/leases/{{leaseId}}",
+                  "host": [
+                    "{{leaseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "landlord",
+                    "leases",
+                    "{{leaseId}}"
+                  ]
+                },
+                "description": "Another landlord's lease is 404, not 403 - a 403 would confirm it exists."
+              }
+            }
+          ]
+        },
+        {
+          "name": "Teardown - terminate",
+          "description": "Last, so the landlord folder above still has a current tenancy to show. Ending the lease first would leave 'My leases' correctly empty and look like a bug.",
+          "item": [
+            {
+              "name": "Terminate lease",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "AGENT",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Agency",
+                    "value": "{{agencyId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{leaseUrl}}/api/agency/leases/{{leaseId}}/termination",
+                  "host": [
+                    "{{leaseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "agency",
+                    "leases",
+                    "{{leaseId}}",
+                    "termination"
+                  ]
+                },
+                "description": "Frees the house. Before move-in this cancels, after it this ends - either way one LeaseEnded event goes out, property-service relists the house and payment-service stops billing it.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"reason\": \"Tenancy completed\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "payment-service (8083)",
+      "description": "Invoices, payments, commission and landlord payouts.\n\n**This folder needs a broker.** payment-service learns what to bill from lease events, so without `docker compose up -d redpanda` it never hears about a signed lease, every list here is correctly empty, and the requests that need an invoice id have nothing to work with.\n\nWith the broker running: sign a lease, wait for the invoice generator (every minute in dev), then start at **List invoices** - it captures the id the rest of the folder uses.",
+      "item": [
+        {
+          "name": "Agency - settlement policy",
+          "description": "Whether the platform holds the money is decided per agency. An agency that has never configured one behaves as DIRECT_TO_LANDLORD, because the mode where the platform holds nothing is the safe direction to be wrong in.",
+          "item": [
+            {
+              "name": "Get settlement config",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "AGENT",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Agency",
+                    "value": "{{agencyId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{paymentUrl}}/api/agency/settlement-config",
+                  "host": [
+                    "{{paymentUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "agency",
+                    "settlement-config"
+                  ]
+                },
+                "description": "Returns defaults if none was set; reading never creates a row."
+              }
+            },
+            {
+              "name": "Set settlement config",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "AGENCY_ADMIN",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Agency",
+                    "value": "{{agencyId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{paymentUrl}}/api/agency/settlement-config",
+                  "host": [
+                    "{{paymentUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "agency",
+                    "settlement-config"
+                  ]
+                },
+                "description": "AGENCY_ADMIN only - an agent who could raise the commission could change what every landlord on the books is paid. Commission is basis points, so 750 is 7.5%, and must be 0 unless the mode is PLATFORM_COLLECTS.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"mode\": \"PLATFORM_COLLECTS\",\n  \"commissionBps\": 750\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Agency - invoices",
+          "description": "Invoices are derived from the lease's payment modality by a scheduled job, not created by hand - which is why there is no POST here. In dev the generator runs every minute.",
+          "item": [
+            {
+              "name": "List invoices",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "AGENT",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Agency",
+                    "value": "{{agencyId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{paymentUrl}}/api/agency/invoices?unpaidOnly=false&page=0&size=20",
+                  "host": [
+                    "{{paymentUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "agency",
+                    "invoices"
+                  ],
+                  "query": [
+                    {
+                      "key": "unpaidOnly",
+                      "value": "false"
+                    },
+                    {
+                      "key": "page",
+                      "value": "0"
+                    },
+                    {
+                      "key": "size",
+                      "value": "20"
+                    }
+                  ]
+                },
+                "description": "Saves the first invoice id into {{invoiceId}}."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// Saves an id so the next request in this folder just works.",
+                      "if (pm.response.code < 300) {",
+                      "    const body = pm.response.json();",
+                      "    const value = body.items && body.items.length ? body.items[0].id : null;",
+                      "    if (value) {",
+                      "        pm.collectionVariables.set('invoiceId', value);",
+                      "        console.log('invoiceId =', value);",
+                      "    }",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Overdue invoices",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "AGENT",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Agency",
+                    "value": "{{agencyId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{paymentUrl}}/api/agency/invoices/overdue?page=0&size=20",
+                  "host": [
+                    "{{paymentUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "agency",
+                    "invoices",
+                    "overdue"
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "0"
+                    },
+                    {
+                      "key": "size",
+                      "value": "20"
+                    }
+                  ]
+                },
+                "description": "The chase list. Lateness is derived from the due date and the clock, so this is right even if the arrears sweep has never run."
+              }
+            },
+            {
+              "name": "Get invoice",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "AGENT",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Agency",
+                    "value": "{{agencyId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{paymentUrl}}/api/agency/invoices/{{invoiceId}}",
+                  "host": [
+                    "{{paymentUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "agency",
+                    "invoices",
+                    "{{invoiceId}}"
+                  ]
+                },
+                "description": "outstanding and overdue are computed on read, not stored."
+              }
+            }
+          ]
+        },
+        {
+          "name": "Agency - payments",
+          "description": "Rent arrives two ways. Cash over the counter is recorded already settled; a mobile money push is initiated by the renter and confirmed here when the provider says so.",
+          "item": [
+            {
+              "name": "Record a settled payment",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "AGENT",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Agency",
+                    "value": "{{agencyId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{paymentUrl}}/api/agency/payments",
+                  "host": [
+                    "{{paymentUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "agency",
+                    "payments"
+                  ]
+                },
+                "description": "Money the agency already holds. providerReference is the idempotency key and is required for everything but CASH - reuse one and this is 409 PAYMENT_ALREADY_RECORDED, with the invoice left untouched. Paying more than the balance is also 409.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"invoiceId\": \"{{invoiceId}}\",\n  \"amount\": \"150000.00\",\n  \"method\": \"CASH\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// Saves an id so the next request in this folder just works.",
+                      "if (pm.response.code < 300) {",
+                      "    const body = pm.response.json();",
+                      "    const value = body.id;",
+                      "    if (value) {",
+                      "        pm.collectionVariables.set('paymentId', value);",
+                      "        console.log('paymentId =', value);",
+                      "    }",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "List payments",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "AGENT",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Agency",
+                    "value": "{{agencyId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{paymentUrl}}/api/agency/payments?page=0&size=20",
+                  "host": [
+                    "{{paymentUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "agency",
+                    "payments"
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "0"
+                    },
+                    {
+                      "key": "size",
+                      "value": "20"
+                    }
+                  ]
+                },
+                "description": "This agency's payments, newest first."
+              }
+            },
+            {
+              "name": "Get payment",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "AGENT",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Agency",
+                    "value": "{{agencyId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{paymentUrl}}/api/agency/payments/{{paymentId}}",
+                  "host": [
+                    "{{paymentUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "agency",
+                    "payments",
+                    "{{paymentId}}"
+                  ]
+                },
+                "description": ""
+              }
+            },
+            {
+              "name": "Confirm settlement",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "AGENT",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Agency",
+                    "value": "{{agencyId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{paymentUrl}}/api/agency/payments/{{paymentId}}/settlement",
+                  "host": [
+                    "{{paymentUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "agency",
+                    "payments",
+                    "{{paymentId}}",
+                    "settlement"
+                  ]
+                },
+                "description": "The provider callback. Deliberately safe to send twice: a redelivered confirmation returns the payment it already settled rather than crediting the invoice again.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"providerReference\": \"WAVE-TX-0001\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Mark payment failed",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "AGENT",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Agency",
+                    "value": "{{agencyId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{paymentUrl}}/api/agency/payments/{{paymentId}}/failure",
+                  "host": [
+                    "{{paymentUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "agency",
+                    "payments",
+                    "{{paymentId}}",
+                    "failure"
+                  ]
+                },
+                "description": "The invoice stays owed. Note that run in order this answers 409: the payment above has already settled, and money does not un-move. To see it succeed, initiate one from the renter folder and fail that instead.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"reason\": \"Insufficient funds\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Agency - payouts",
+          "description": "Only exist under PLATFORM_COLLECTS. Under DIRECT_TO_LANDLORD the absence of a row is the record that nothing is owed onward.",
+          "item": [
+            {
+              "name": "List payouts",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "AGENT",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Agency",
+                    "value": "{{agencyId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{paymentUrl}}/api/agency/payouts?pendingOnly=true&page=0&size=20",
+                  "host": [
+                    "{{paymentUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "agency",
+                    "payouts"
+                  ],
+                  "query": [
+                    {
+                      "key": "pendingOnly",
+                      "value": "true"
+                    },
+                    {
+                      "key": "page",
+                      "value": "0"
+                    },
+                    {
+                      "key": "size",
+                      "value": "20"
+                    }
+                  ]
+                },
+                "description": "Gross, commission and net are stored per payout at the rate that applied when it settled, so a later rate change cannot rewrite history."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// Saves an id so the next request in this folder just works.",
+                      "if (pm.response.code < 300) {",
+                      "    const body = pm.response.json();",
+                      "    const value = body.items && body.items.length ? body.items[0].id : null;",
+                      "    if (value) {",
+                      "        pm.collectionVariables.set('payoutId', value);",
+                      "        console.log('payoutId =', value);",
+                      "    }",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Mark payout settled",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "AGENT",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Agency",
+                    "value": "{{agencyId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{paymentUrl}}/api/agency/payouts/{{payoutId}}/settlement",
+                  "host": [
+                    "{{paymentUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "agency",
+                    "payouts",
+                    "{{payoutId}}",
+                    "settlement"
+                  ]
+                },
+                "description": "Records that a transfer happened elsewhere; it does not move money."
+              }
+            }
+          ]
+        },
+        {
+          "name": "Renter - my rent",
+          "description": "The isolation rule with the sharpest edge: an invoice a renter can see is an invoice a renter can pay, so the predicate here guards money and not just data.",
+          "item": [
+            {
+              "name": "My invoices",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "RENTER",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Party",
+                    "value": "{{renterId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{paymentUrl}}/api/renter/invoices?unpaidOnly=true&page=0&size=20",
+                  "host": [
+                    "{{paymentUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "renter",
+                    "invoices"
+                  ],
+                  "query": [
+                    {
+                      "key": "unpaidOnly",
+                      "value": "true"
+                    },
+                    {
+                      "key": "page",
+                      "value": "0"
+                    },
+                    {
+                      "key": "size",
+                      "value": "20"
+                    }
+                  ]
+                },
+                "description": "Across every agency this renter rents from. Saves {{renterInvoiceId}}."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// Saves an id so the next request in this folder just works.",
+                      "if (pm.response.code < 300) {",
+                      "    const body = pm.response.json();",
+                      "    const value = body.items && body.items.length ? body.items[0].invoiceId : null;",
+                      "    if (value) {",
+                      "        pm.collectionVariables.set('renterInvoiceId', value);",
+                      "        console.log('renterInvoiceId =', value);",
+                      "    }",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "My invoice",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "RENTER",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Party",
+                    "value": "{{renterId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{paymentUrl}}/api/renter/invoices/{{renterInvoiceId}}",
+                  "host": [
+                    "{{paymentUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "renter",
+                    "invoices",
+                    "{{renterInvoiceId}}"
+                  ]
+                },
+                "description": "Another renter's invoice is 404."
+              }
+            },
+            {
+              "name": "My balance",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "RENTER",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Party",
+                    "value": "{{renterId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{paymentUrl}}/api/renter/balance",
+                  "host": [
+                    "{{paymentUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "renter",
+                    "balance"
+                  ]
+                },
+                "description": "One number: everything currently owed, so a client need not sum it."
+              }
+            },
+            {
+              "name": "Pay an invoice",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "RENTER",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Party",
+                    "value": "{{renterId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{paymentUrl}}/api/renter/invoices/{{renterInvoiceId}}/payments",
+                  "host": [
+                    "{{paymentUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "renter",
+                    "invoices",
+                    "{{renterInvoiceId}}",
+                    "payments"
+                  ]
+                },
+                "description": "Lands PENDING - initiating a mobile money push is not the money arriving. Confirm it from the agency folder to actually credit the invoice.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"amount\": \"150000.00\",\n  \"method\": \"MOBILE_MONEY\",\n  \"providerReference\": \"WAVE-TX-{{$randomInt}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// Saves an id so the next request in this folder just works.",
+                      "if (pm.response.code < 300) {",
+                      "    const body = pm.response.json();",
+                      "    const value = body.id;",
+                      "    if (value) {",
+                      "        pm.collectionVariables.set('paymentId', value);",
+                      "        console.log('paymentId =', value);",
+                      "    }",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Landlord - earnings",
+          "description": "What the landlord was actually paid, net of whatever commission applied at the time.",
+          "item": [
+            {
+              "name": "My earnings",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "LANDLORD",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Party",
+                    "value": "{{landlordId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{paymentUrl}}/api/landlord/earnings?page=0&size=20",
+                  "host": [
+                    "{{paymentUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "landlord",
+                    "earnings"
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "0"
+                    },
+                    {
+                      "key": "size",
+                      "value": "20"
+                    }
+                  ]
+                },
+                "description": "Gross, commission and net on every row, so 'where did the rest go' is answered in the same response rather than in a support conversation."
+              }
+            },
+            {
+              "name": "My total",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "LANDLORD",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Party",
+                    "value": "{{landlordId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{paymentUrl}}/api/landlord/earnings/total",
+                  "host": [
+                    "{{paymentUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "landlord",
+                    "earnings",
+                    "total"
+                  ]
+                },
+                "description": "Sums stored net amounts rather than reapplying today's rate."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "notification-service (8084)",
+      "description": "Contact details and notification preferences.",
+      "item": [
+        {
+          "name": "My contact",
+          "description": "Where a landlord or renter's mail goes. This service has no agency scoping at all: one landlord working with three agencies is one person with one address who should get one email about one payment.",
+          "item": [
+            {
+              "name": "My contact",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "LANDLORD",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Party",
+                    "value": "{{landlordId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{notificationUrl}}/api/me/contact",
+                  "host": [
+                    "{{notificationUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "me",
+                    "contact"
+                  ]
+                },
+                "description": "404 until one is set."
+              }
+            },
+            {
+              "name": "Set my contact",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "LANDLORD",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Party",
+                    "value": "{{landlordId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{notificationUrl}}/api/me/contact",
+                  "host": [
+                    "{{notificationUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "me",
+                    "contact"
+                  ]
+                },
+                "description": "locale is functional rather than decorative: it picks the language of every notification, and defaults to French.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"landlord@example.ci\",\n  \"displayName\": \"M. Konan\",\n  \"locale\": \"fr\",\n  \"notifyOnPayment\": true,\n  \"notifyOnArrears\": true\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Update my preferences",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "LANDLORD",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Party",
+                    "value": "{{landlordId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{notificationUrl}}/api/me/contact/preferences",
+                  "host": [
+                    "{{notificationUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "me",
+                    "contact",
+                    "preferences"
+                  ]
+                },
+                "description": "Mute one kind of mail without restating an address. Opting out means the message is never composed, so nothing sits unsent in the delivery log.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"notifyOnPayment\": true,\n  \"notifyOnArrears\": false\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Agency admin - contacts",
+          "description": "An agency onboarding a landlord's address. AGENCY_ADMIN only, and interim: once Keycloak owns identity this table becomes a cache of it rather than the source.",
+          "item": [
+            {
+              "name": "Upsert a contact",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "AGENCY_ADMIN",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Agency",
+                    "value": "{{agencyId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{notificationUrl}}/api/contacts/{{landlordId}}",
+                  "host": [
+                    "{{notificationUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "contacts",
+                    "{{landlordId}}"
+                  ]
+                },
+                "description": "Only the address is required; the rest keep their current values.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"landlord@example.ci\",\n  \"displayName\": \"M. Konan\",\n  \"locale\": \"fr\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Get a contact",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "AGENCY_ADMIN",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Agency",
+                    "value": "{{agencyId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{notificationUrl}}/api/contacts/{{landlordId}}",
+                  "host": [
+                    "{{notificationUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "contacts",
+                    "{{landlordId}}"
+                  ]
+                },
+                "description": ""
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Health and API docs",
+      "description": "Every service exposes the same three. Swagger UI is on in dev and switched off in production; the OpenAPI document is served in both.",
+      "item": [
+        {
+          "name": "property - health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{propertyUrl}}/q/health",
+              "host": [
+                "{{propertyUrl}}"
+              ],
+              "path": [
+                "q",
+                "health"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "lease - health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{leaseUrl}}/q/health",
+              "host": [
+                "{{leaseUrl}}"
+              ],
+              "path": [
+                "q",
+                "health"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "payment - health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{paymentUrl}}/q/health",
+              "host": [
+                "{{paymentUrl}}"
+              ],
+              "path": [
+                "q",
+                "health"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "notification - health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{notificationUrl}}/q/health",
+              "host": [
+                "{{notificationUrl}}"
+              ],
+              "path": [
+                "q",
+                "health"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "property - OpenAPI",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{propertyUrl}}/q/openapi",
+              "host": [
+                "{{propertyUrl}}"
+              ],
+              "path": [
+                "q",
+                "openapi"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "lease - OpenAPI",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{leaseUrl}}/q/openapi",
+              "host": [
+                "{{leaseUrl}}"
+              ],
+              "path": [
+                "q",
+                "openapi"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "payment - OpenAPI",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{paymentUrl}}/q/openapi",
+              "host": [
+                "{{paymentUrl}}"
+              ],
+              "path": [
+                "q",
+                "openapi"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "notification - OpenAPI",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{notificationUrl}}/q/openapi",
+              "host": [
+                "{{notificationUrl}}"
+              ],
+              "path": [
+                "q",
+                "openapi"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "property - Swagger UI",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{propertyUrl}}/q/swagger-ui",
+              "host": [
+                "{{propertyUrl}}"
+              ],
+              "path": [
+                "q",
+                "swagger-ui"
+              ]
+            },
+            "description": "Dev only."
+          }
+        },
+        {
+          "name": "lease - Swagger UI",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{leaseUrl}}/q/swagger-ui",
+              "host": [
+                "{{leaseUrl}}"
+              ],
+              "path": [
+                "q",
+                "swagger-ui"
+              ]
+            },
+            "description": "Dev only."
+          }
+        },
+        {
+          "name": "payment - Swagger UI",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{paymentUrl}}/q/swagger-ui",
+              "host": [
+                "{{paymentUrl}}"
+              ],
+              "path": [
+                "q",
+                "swagger-ui"
+              ]
+            },
+            "description": "Dev only."
+          }
+        },
+        {
+          "name": "notification - Swagger UI",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{notificationUrl}}/q/swagger-ui",
+              "host": [
+                "{{notificationUrl}}"
+              ],
+              "path": [
+                "q",
+                "swagger-ui"
+              ]
+            },
+            "description": "Dev only."
+          }
+        }
+      ]
+    }
+  ]
+}

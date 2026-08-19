@@ -1,0 +1,65 @@
+# ============================================================================
+#  notification-service - production
+# ============================================================================
+#  The mail settings matter more here than anywhere else: a misconfigured host
+#  in development means nobody is emailed, and in production it means real
+#  people are emailed by the wrong system, or not at all while the delivery log
+#  quietly fills with failures.
+# ============================================================================
+
+quarkus:
+  http:
+    port: ${HTTP_PORT:8084}
+
+  datasource:
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    jdbc:
+      url: ${DB_URL}
+      max-size: ${DB_POOL_MAX_SIZE:20}
+
+  flyway:
+    migrate-at-start: true
+
+  oidc:
+    enabled: true
+    auth-server-url: ${OIDC_AUTH_SERVER_URL}
+    client-id: ${OIDC_CLIENT_ID}
+    credentials:
+      secret: ${OIDC_CLIENT_SECRET}
+
+  mailer:
+    from: ${MAIL_FROM}
+    host: ${MAIL_HOST}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME}
+    password: ${MAIL_PASSWORD}
+    # Rent notices name a renter, a property and an amount. That is not
+    # information to hand to the network in the clear.
+    start-tls: REQUIRED
+    login: REQUIRED
+    # Never true outside tests. A mock mailbox in production would silently
+    # swallow every notification while looking perfectly healthy.
+    mock: false
+
+  hibernate-orm:
+    log:
+      sql: false
+
+  log:
+    level: INFO
+    category:
+      "com.digitalpartner.houseagent":
+        level: ${APP_LOG_LEVEL:INFO}
+
+  swagger-ui:
+    always-include: false
+
+kafka:
+  bootstrap:
+    servers: ${KAFKA_BOOTSTRAP_SERVERS}
+
+app:
+  notification:
+    retry-interval: ${NOTIFICATION_RETRY_INTERVAL:5m}
+    max-attempts: ${NOTIFICATION_MAX_ATTEMPTS:5}

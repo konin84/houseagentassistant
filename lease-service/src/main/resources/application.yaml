@@ -1,0 +1,83 @@
+# ============================================================================
+#  lease-service - shared configuration
+# ============================================================================
+#  Everything here applies to every profile. Anything that legitimately differs
+#  between a laptop and a deployed environment lives in application-dev.yaml or
+#  application-prod.yaml.
+#
+#  Test overrides stay in this file: tests are not a deployment target, they are
+#  a variation on the shared configuration.
+# ============================================================================
+
+quarkus:
+  application:
+    name: lease-service
+
+  datasource:
+    db-kind: postgresql
+    # Dev- and test-shaped defaults. application-prod.yaml replaces both with
+    # variables that have no fallback, so a missing secret fails the boot.
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
+
+  hibernate-orm:
+    schema-management:
+      strategy: validate
+    multitenant: DISCRIMINATOR
+
+  flyway:
+    migrate-at-start: true
+    baseline-on-migrate: true
+
+  smallrye-openapi:
+    info-title: Lease Service API
+    info-version: 1.0.0
+
+# --- Messaging -------------------------------------------------------------
+# Only the outbox relay produces on this channel; nothing publishes directly.
+mp:
+  messaging:
+    outgoing:
+      lease-events:
+        connector: smallrye-kafka
+        topic: lease-events
+        value:
+          serializer: org.apache.kafka.common.serialization.StringSerializer
+        key:
+          serializer: org.apache.kafka.common.serialization.StringSerializer
+        # Wait for all in-sync replicas. An event acknowledged but then lost
+        # would leave property-service permanently disagreeing about which
+        # houses are free.
+        acks: all
+
+app:
+  outbox:
+    poll-interval: 2s
+
+# ============================================================================
+#  Test
+# ============================================================================
+"%test":
+  quarkus:
+    datasource:
+      jdbc:
+        url: jdbc:postgresql://localhost:5432/houseagent_lease_test
+    flyway:
+      clean-at-start: true
+      clean-disabled: false
+    oidc:
+      discovery-enabled: false
+      auth-server-url: http://localhost:8180/realms/houseagent
+      jwks-path: protocol/openid-connect/certs
+    # The relay is driven explicitly in tests rather than by the clock. Switched
+    # off outright rather than given a long interval, so a stray firing cannot
+    # publish events a test is counting.
+    scheduler:
+      enabled: false
+  mp:
+    messaging:
+      outgoing:
+        lease-events:
+          # No Docker and no broker, and assertions stay synchronous rather than
+          # timing-dependent.
+          connector: smallrye-in-memory

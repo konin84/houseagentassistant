@@ -1,0 +1,58 @@
+# ============================================================================
+#  payment-service - production
+# ============================================================================
+#  This is the service that moves money, so nothing here has a fallback. A
+#  missing variable should stop the boot with a named property rather than start
+#  a service pointed at the wrong database or trusting no identity provider.
+# ============================================================================
+
+quarkus:
+  http:
+    port: ${HTTP_PORT:8083}
+
+  datasource:
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    jdbc:
+      url: ${DB_URL}
+      max-size: ${DB_POOL_MAX_SIZE:20}
+
+  flyway:
+    migrate-at-start: true
+
+  oidc:
+    enabled: true
+    auth-server-url: ${OIDC_AUTH_SERVER_URL}
+    client-id: ${OIDC_CLIENT_ID}
+    credentials:
+      secret: ${OIDC_CLIENT_SECRET}
+
+  hibernate-orm:
+    log:
+      sql: false
+
+  log:
+    level: INFO
+    category:
+      "com.digitalpartner.houseagent":
+        level: ${APP_LOG_LEVEL:INFO}
+
+  swagger-ui:
+    always-include: false
+
+kafka:
+  bootstrap:
+    servers: ${KAFKA_BOOTSTRAP_SERVERS}
+
+app:
+  outbox:
+    poll-interval: ${OUTBOX_POLL_INTERVAL:2s}
+  invoicing:
+    interval: ${INVOICING_INTERVAL:1h}
+    # Raising invoices further ahead is safe - generation is idempotent and keyed
+    # on (lease_id, period_start) - but it does mean renters see rent sooner.
+    horizon-days: ${INVOICING_HORIZON_DAYS:45}
+  arrears:
+    # Every sweep can only ever announce an invoice once, so this interval trades
+    # promptness against nothing but a query.
+    interval: ${ARREARS_INTERVAL:6h}

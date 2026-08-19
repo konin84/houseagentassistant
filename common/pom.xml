@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.digitalpartner</groupId>
+        <artifactId>houseagentassistant</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>common</artifactId>
+    <name>common</name>
+
+    <description>
+        Contracts shared by every service: event payloads, topic names, JWT claim and
+        role constants. Deliberately thin - if this grows into a shared domain model
+        the services stop being independently deployable.
+    </description>
+
+    <dependencies>
+        <dependency>
+            <groupId>jakarta.validation</groupId>
+            <artifactId>jakarta.validation-api</artifactId>
+        </dependency>
+
+        <!--
+          Needed only by the dev-support augmentor, which is compiled into dev builds
+          and nothing else. Every consumer of this module is a Quarkus service that
+          already has all three on its classpath, so this adds no runtime surface.
+        -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-arc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-security</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-vertx-http</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!--
+              Quarkus only discovers CDI beans and reflection targets from dependency
+              jars that carry a Jandex index. Without this the classes here are
+              invisible to ArC at build time, which fails at runtime with no obvious
+              cause. Cheap to add now, painful to diagnose later.
+            -->
+            <plugin>
+                <groupId>io.smallrye</groupId>
+                <artifactId>jandex-maven-plugin</artifactId>
+                <version>${jandex-plugin.version}</version>
+                <executions>
+                    <execution>
+                        <id>make-index</id>
+                        <goals>
+                            <goal>jandex</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

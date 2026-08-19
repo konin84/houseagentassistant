@@ -1,0 +1,35 @@
+# ============================================================================
+#  lease-service - development
+# ============================================================================
+#  Run with: cd lease-service && ../mvnw quarkus:dev
+#  Cross-service dev mode needs a broker: docker compose up -d redpanda
+# ============================================================================
+
+quarkus:
+  http:
+    port: 8082
+
+  datasource:
+    jdbc:
+      url: jdbc:postgresql://localhost:5432/houseagent_lease
+
+  # Authentication is off so the API is usable before Keycloak exists. The role
+  # checks are still real and still exercised - by the tests, which keep OIDC on.
+  oidc:
+    enabled: false
+
+  hibernate-orm:
+    log:
+      sql: true
+
+  log:
+    category:
+      "com.digitalpartner.houseagent":
+        level: DEBUG
+
+  swagger-ui:
+    always-include: true
+
+kafka:
+  bootstrap:
+    servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}

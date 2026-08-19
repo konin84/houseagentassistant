@@ -1,0 +1,54 @@
+# ============================================================================
+#  lease-service - production
+# ============================================================================
+#  Nothing here has a fallback. A missing variable should stop the boot with a
+#  named property rather than start a service pointed at the wrong database or
+#  trusting no identity provider.
+# ============================================================================
+
+quarkus:
+  http:
+    port: ${HTTP_PORT:8082}
+
+  datasource:
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    jdbc:
+      url: ${DB_URL}
+      max-size: ${DB_POOL_MAX_SIZE:20}
+
+  # The lease schema needs the btree_gist extension for its exclusion
+  # constraint, so the migrating role must be able to CREATE EXTENSION - or the
+  # extension must already be installed in the target database.
+  flyway:
+    migrate-at-start: true
+
+  oidc:
+    enabled: true
+    auth-server-url: ${OIDC_AUTH_SERVER_URL}
+    client-id: ${OIDC_CLIENT_ID}
+    credentials:
+      secret: ${OIDC_CLIENT_SECRET}
+
+  hibernate-orm:
+    log:
+      sql: false
+
+  log:
+    level: INFO
+    category:
+      "com.digitalpartner.houseagent":
+        level: ${APP_LOG_LEVEL:INFO}
+
+  swagger-ui:
+    always-include: false
+
+kafka:
+  bootstrap:
+    servers: ${KAFKA_BOOTSTRAP_SERVERS}
+
+app:
+  outbox:
+    # How long a settled change waits before the rest of the platform hears about
+    # it. Lower costs an empty query per interval; higher delays the marketplace.
+    poll-interval: ${OUTBOX_POLL_INTERVAL:2s}

@@ -1,0 +1,86 @@
+# ============================================================================
+#  notification-service - shared configuration
+# ============================================================================
+#  Note the absence of quarkus.hibernate-orm.multitenant. This is the one
+#  service with no agency-scoped data: contacts belong to platform-wide people,
+#  and one landlord working with three agencies is still one person with one
+#  address who should receive one email.
+# ============================================================================
+
+quarkus:
+  application:
+    name: notification-service
+
+  datasource:
+    db-kind: postgresql
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
+
+  hibernate-orm:
+    schema-management:
+      strategy: validate
+
+  flyway:
+    migrate-at-start: true
+    baseline-on-migrate: true
+
+  smallrye-openapi:
+    info-title: Notification Service API
+    info-version: 1.0.0
+
+# --- Messaging -------------------------------------------------------------
+# This service only listens. It publishes nothing.
+mp:
+  messaging:
+    incoming:
+      payment-events:
+        connector: smallrye-kafka
+        topic: payment-events
+        value:
+          deserializer: org.apache.kafka.common.serialization.StringDeserializer
+        key:
+          deserializer: org.apache.kafka.common.serialization.StringDeserializer
+        group:
+          id: notification-service
+        auto:
+          offset:
+            reset: earliest
+
+# --- Delivery --------------------------------------------------------------
+app:
+  notification:
+    retry-interval: 5m
+    # After this many failures a message is abandoned rather than retried
+    # forever: a permanently bad address would otherwise delay everything queued
+    # behind it.
+    max-attempts: 5
+
+# ============================================================================
+#  Test
+# ============================================================================
+"%test":
+  quarkus:
+    datasource:
+      jdbc:
+        url: jdbc:postgresql://localhost:5432/houseagent_notification_test
+    flyway:
+      clean-at-start: true
+      clean-disabled: false
+    oidc:
+      discovery-enabled: false
+      auth-server-url: http://localhost:8180/realms/houseagent
+      jwks-path: protocol/openid-connect/certs
+    mailer:
+      # Collects mail in a MockMailbox instead of opening an SMTP connection, so
+      # the tests assert on what a landlord would actually have received.
+      mock: true
+    # Retries are driven explicitly rather than by the clock. Switched off
+    # outright rather than given a long interval, so a stray firing cannot
+    # deliver a message a test is about to assert has not been delivered.
+    scheduler:
+      enabled: false
+  mp:
+    messaging:
+      incoming:
+        payment-events:
+          connector: smallrye-in-memory

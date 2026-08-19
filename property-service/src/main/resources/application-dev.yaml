@@ -1,0 +1,48 @@
+# ============================================================================
+#  property-service - development
+# ============================================================================
+#  Run with: cd property-service && ../mvnw quarkus:dev
+#
+#  Points at the local postgresql-x64-18 Windows service on port 5432. Once
+#  Docker Desktop is running you can delete the jdbc url below and Quarkus Dev
+#  Services will start a throwaway PostgreSQL container instead.
+# ============================================================================
+
+quarkus:
+  http:
+    port: 8081
+
+  datasource:
+    jdbc:
+      url: jdbc:postgresql://localhost:5432/houseagent_property
+
+  # Authentication is off so the API is usable before Keycloak exists. The role
+  # checks are still real and still exercised - by the tests, which keep OIDC on.
+  oidc:
+    enabled: false
+
+  hibernate-orm:
+    log:
+      sql: true
+
+  log:
+    category:
+      "com.digitalpartner.houseagent":
+        level: DEBUG
+
+  swagger-ui:
+    always-include: true
+
+# Cross-service dev mode needs a broker: docker compose up -d redpanda
+kafka:
+  bootstrap:
+    servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+
+app:
+  cloudinary:
+    # Unset by default, which disables uploads rather than failing the boot: the
+    # rest of the service is perfectly usable without an image host. Fill these
+    # in from your Cloudinary dashboard to try uploads locally.
+    cloud-name: ${CLOUDINARY_CLOUD_NAME:}
+    api-key: ${CLOUDINARY_API_KEY:}
+    api-secret: ${CLOUDINARY_API_SECRET:}
