@@ -1,0 +1,145 @@
+# ============================================================================
+#  Gateway routing
+# ============================================================================
+#  One origin in front of four services, so a browser frontend talks to a single
+#  host and CORS is configured once rather than four times.
+#
+#  This is configuration, not a service anyone wrote. Coming from Spring you
+#  would reach for Spring Cloud Gateway - a Java application to build, test and
+#  deploy. Quarkus has no equivalent on purpose: a gateway that only copies bytes
+#  between sockets is a reverse proxy, and reverse proxies already exist.
+#
+#  In a deployment this file is replaced by an Ingress or whatever the platform
+#  uses. The routing table is the part worth keeping.
+#
+# ============================================================================
+#  The gateway does NOT authenticate
+# ============================================================================
+#  Every service still validates its own bearer token, and that is deliberate.
+#  A gateway that authenticated and then forwarded "trusted" traffic would mean
+#  anything able to reach the internal network could act as anyone - and in this
+#  system, where agency_id in a token decides which customer's data is returned,
+#  that is the whole ballgame. The gateway forwards the Authorization header and
+#  forms no opinion about it.
+# ============================================================================
+
+http:
+
+  middlewares:
+    # Development CORS: permissive because the frontend origin is not known yet.
+    # A deployment must replace the wildcard with the real origin - a browser will
+    # otherwise refuse credentialed requests anyway.
+    dev-cors:
+      headers:
+        accessControlAllowOriginList:
+          - "*"
+        accessControlAllowMethods:
+          - GET
+          - POST
+          - PUT
+          - PATCH
+          - DELETE
+          - OPTIONS
+        accessControlAllowHeaders:
+          - "*"
+        accessControlMaxAge: 3600
+        addVaryHeader: true
+
+  routers:
+
+    # --- property-service ---------------------------------------------------
+    # Note that /api/agency is split across three services rather than owned by
+    # one. The paths were designed per service, and putting a gateway in front is
+    # what makes that visible. Traefik prioritises longer rules first, so these
+    # never collide with the lease and payment routes below.
+    property-houses:
+      rule: "PathPrefix(`/api/agency/houses`)"
+      service: property
+      entryPoints: [web]
+      middlewares: [dev-cors]
+
+    property-marketplace:
+      rule: "PathPrefix(`/api/marketplace`)"
+      service: property
+      entryPoints: [web]
+      middlewares: [dev-cors]
+
+    # --- lease-service ------------------------------------------------------
+    lease-agency:
+      rule: "PathPrefix(`/api/agency/leases`)"
+      service: lease
+      entryPoints: [web]
+      middlewares: [dev-cors]
+
+    lease-landlord:
+      rule: "PathPrefix(`/api/landlord/leases`)"
+      service: lease
+      entryPoints: [web]
+      middlewares: [dev-cors]
+
+    # --- payment-service ----------------------------------------------------
+    payment-agency:
+      rule: >-
+        PathPrefix(`/api/agency/invoices`)
+        || PathPrefix(`/api/agency/payments`)
+        || PathPrefix(`/api/agency/payouts`)
+        || PathPrefix(`/api/agency/settlement-config`)
+      service: payment
+      entryPoints: [web]
+      middlewares: [dev-cors]
+
+    payment-renter:
+      rule: "PathPrefix(`/api/renter`)"
+      service: payment
+      entryPoints: [web]
+      middlewares: [dev-cors]
+
+    # Landlords read their leases from one service and their earnings from
+    # another. A single /api/landlord route would send both to the same place.
+    payment-landlord:
+      rule: "PathPrefix(`/api/landlord/earnings`)"
+      service: payment
+      entryPoints: [web]
+      middlewares: [dev-cors]
+
+    # --- notification-service -----------------------------------------------
+    notification-contacts:
+      rule: "PathPrefix(`/api/me/contact`) || PathPrefix(`/api/contacts`)"
+      service: notification
+      entryPoints: [web]
+      middlewares: [dev-cors]
+
+  services:
+    # host.docker.internal because the services run on the host under
+    # `mvnw quarkus:dev`, not in containers. Once they are containerised these
+    # become service names on the compose network.
+    property:
+      loadBalancer:
+        servers:
+          - url: "http://host.docker.internal:8081"
+    lease:
+      loadBalancer:
+        servers:
+          - url: "http://host.docker.internal:8082"
+    payment:
+      loadBalancer:
+        servers:
+          - url: "http://host.docker.internal:8083"
+    notification:
+      loadBalancer:
+        servers:
+          - url: "http://host.docker.internal:8084"
+
+# ============================================================================
+#  Deliberately not routed
+# ============================================================================
+#  Keycloak. A token's `iss` claim is built from the host it was requested
+#  through, so issuing tokens via the gateway would stamp them with the gateway's
+#  address while the services are configured to expect localhost:8180 - and every
+#  one of them would reject a perfectly valid token. Keycloak keeps its own port.
+#
+#  /q/health and /q/openapi. A health check exists to tell you whether one
+#  instance is up; asking a load balancer produces the least useful possible
+#  answer to that question. The Postman collection calls these on the direct
+#  ports for the same reason.
+# ============================================================================

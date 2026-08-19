@@ -32,6 +32,23 @@
       "value": "http://localhost:8084"
     },
     {
+      "key": "propertyDirect",
+      "value": "http://localhost:8081",
+      "description": "Bypasses the gateway. Used by the health folder only."
+    },
+    {
+      "key": "leaseDirect",
+      "value": "http://localhost:8082"
+    },
+    {
+      "key": "paymentDirect",
+      "value": "http://localhost:8083"
+    },
+    {
+      "key": "notificationDirect",
+      "value": "http://localhost:8084"
+    },
+    {
       "key": "keycloakUrl",
       "value": "http://localhost:8180"
     },
@@ -2572,7 +2589,7 @@
     },
     {
       "name": "Health and API docs",
-      "description": "Every service exposes the same three. Swagger UI is on in dev and switched off in production; the OpenAPI document is served in both.",
+      "description": "Every service exposes the same three. Swagger UI is on in dev and switched off in production; the OpenAPI document is served in both.\n\nThese go straight to the service ports even when the rest of the collection is pointed at the gateway - a health check that answers for whichever instance a load balancer picked is not telling you what you asked.",
       "item": [
         {
           "name": "property - health",
@@ -2580,9 +2597,9 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{propertyUrl}}/q/health",
+              "raw": "{{propertyDirect}}/q/health",
               "host": [
-                "{{propertyUrl}}"
+                "{{propertyDirect}}"
               ],
               "path": [
                 "q",
@@ -2598,9 +2615,9 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{leaseUrl}}/q/health",
+              "raw": "{{leaseDirect}}/q/health",
               "host": [
-                "{{leaseUrl}}"
+                "{{leaseDirect}}"
               ],
               "path": [
                 "q",
@@ -2616,9 +2633,9 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{paymentUrl}}/q/health",
+              "raw": "{{paymentDirect}}/q/health",
               "host": [
-                "{{paymentUrl}}"
+                "{{paymentDirect}}"
               ],
               "path": [
                 "q",
@@ -2634,9 +2651,9 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{notificationUrl}}/q/health",
+              "raw": "{{notificationDirect}}/q/health",
               "host": [
-                "{{notificationUrl}}"
+                "{{notificationDirect}}"
               ],
               "path": [
                 "q",
@@ -2652,9 +2669,9 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{propertyUrl}}/q/openapi",
+              "raw": "{{propertyDirect}}/q/openapi",
               "host": [
-                "{{propertyUrl}}"
+                "{{propertyDirect}}"
               ],
               "path": [
                 "q",
@@ -2670,9 +2687,9 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{leaseUrl}}/q/openapi",
+              "raw": "{{leaseDirect}}/q/openapi",
               "host": [
-                "{{leaseUrl}}"
+                "{{leaseDirect}}"
               ],
               "path": [
                 "q",
@@ -2688,9 +2705,9 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{paymentUrl}}/q/openapi",
+              "raw": "{{paymentDirect}}/q/openapi",
               "host": [
-                "{{paymentUrl}}"
+                "{{paymentDirect}}"
               ],
               "path": [
                 "q",
@@ -2706,9 +2723,9 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{notificationUrl}}/q/openapi",
+              "raw": "{{notificationDirect}}/q/openapi",
               "host": [
-                "{{notificationUrl}}"
+                "{{notificationDirect}}"
               ],
               "path": [
                 "q",
@@ -2724,9 +2741,9 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{propertyUrl}}/q/swagger-ui",
+              "raw": "{{propertyDirect}}/q/swagger-ui",
               "host": [
-                "{{propertyUrl}}"
+                "{{propertyDirect}}"
               ],
               "path": [
                 "q",
@@ -2742,9 +2759,9 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{leaseUrl}}/q/swagger-ui",
+              "raw": "{{leaseDirect}}/q/swagger-ui",
               "host": [
-                "{{leaseUrl}}"
+                "{{leaseDirect}}"
               ],
               "path": [
                 "q",
@@ -2760,9 +2777,9 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{paymentUrl}}/q/swagger-ui",
+              "raw": "{{paymentDirect}}/q/swagger-ui",
               "host": [
-                "{{paymentUrl}}"
+                "{{paymentDirect}}"
               ],
               "path": [
                 "q",
@@ -2778,9 +2795,9 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{notificationUrl}}/q/swagger-ui",
+              "raw": "{{notificationDirect}}/q/swagger-ui",
               "host": [
-                "{{notificationUrl}}"
+                "{{notificationDirect}}"
               ],
               "path": [
                 "q",

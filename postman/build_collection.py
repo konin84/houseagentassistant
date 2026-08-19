@@ -15,6 +15,14 @@ LEASE = "{{leaseUrl}}"
 PAY = "{{paymentUrl}}"
 NOTIF = "{{notificationUrl}}"
 
+# Health and OpenAPI always bypass the gateway. A health check exists to say
+# whether one instance is up, and asking a load balancer produces the least useful
+# possible answer to that question.
+PROP_DIRECT = "{{propertyDirect}}"
+LEASE_DIRECT = "{{leaseDirect}}"
+PAY_DIRECT = "{{paymentDirect}}"
+NOTIF_DIRECT = "{{notificationDirect}}"
+
 AGENT = "AGENT"
 ADMIN = "AGENCY_ADMIN"
 LANDLORD = "LANDLORD"
@@ -538,12 +546,16 @@ contacts = folder(
             "", role=ADMIN),
     ])
 
-SERVICES = [("property", PROP), ("lease", LEASE), ("payment", PAY), ("notification", NOTIF)]
+SERVICES = [("property", PROP_DIRECT), ("lease", LEASE_DIRECT),
+            ("payment", PAY_DIRECT), ("notification", NOTIF_DIRECT)]
 
 health = folder(
     "Health and API docs",
-    "Every service exposes the same three. Swagger UI is on in dev and switched off in "
-    "production; the OpenAPI document is served in both.",
+    "Every service exposes the same three. Swagger UI is on in dev and switched off "
+    "in production; the OpenAPI document is served in both.\n\n"
+    "These go straight to the service ports even when the rest of the collection is "
+    "pointed at the gateway - a health check that answers for whichever instance a "
+    "load balancer picked is not telling you what you asked.",
     [req(n + " - health", "GET", url(b, ["q", "health"]), "", None) for n, b in SERVICES]
     + [req(n + " - OpenAPI", "GET", url(b, ["q", "openapi"]), "", None) for n, b in SERVICES]
     + [req(n + " - Swagger UI", "GET", url(b, ["q", "swagger-ui"]), "Dev only.", None)
@@ -624,6 +636,11 @@ collection = {
         {"key": "leaseUrl", "value": "http://localhost:8082"},
         {"key": "paymentUrl", "value": "http://localhost:8083"},
         {"key": "notificationUrl", "value": "http://localhost:8084"},
+        {"key": "propertyDirect", "value": "http://localhost:8081",
+         "description": "Bypasses the gateway. Used by the health folder only."},
+        {"key": "leaseDirect", "value": "http://localhost:8082"},
+        {"key": "paymentDirect", "value": "http://localhost:8083"},
+        {"key": "notificationDirect", "value": "http://localhost:8084"},
         {"key": "keycloakUrl", "value": "http://localhost:8180"},
         {"key": "keycloakClientId", "value": "houseagent-backend"},
         {"key": "keycloakClientSecret", "value": "houseagent-dev-secret",
@@ -674,27 +691,50 @@ collection = {
     ],
 }
 
-environment = {
-    "name": "houseagentassistant - local dev",
-    "values": [
-        {"key": "propertyUrl", "value": "http://localhost:8081", "type": "default", "enabled": True},
-        {"key": "leaseUrl", "value": "http://localhost:8082", "type": "default", "enabled": True},
-        {"key": "paymentUrl", "value": "http://localhost:8083", "type": "default", "enabled": True},
-        {"key": "notificationUrl", "value": "http://localhost:8084", "type": "default", "enabled": True},
-        {"key": "keycloakUrl", "value": "http://localhost:8180", "type": "default", "enabled": True},
-        {"key": "keycloakClientId", "value": "houseagent-backend", "type": "default", "enabled": True},
-        {"key": "keycloakClientSecret", "value": "houseagent-dev-secret", "type": "secret", "enabled": True},
-        {"key": "keycloakPassword", "value": "password", "type": "secret", "enabled": True},
-        {"key": "accessToken", "value": "", "type": "secret", "enabled": True},
-        {"key": "agencyId", "value": "agency-a", "type": "default", "enabled": True},
-        {"key": "otherAgencyId", "value": "agency-b", "type": "default", "enabled": True},
-        {"key": "landlordId", "value": "11111111-1111-1111-1111-111111111111",
-         "type": "default", "enabled": True},
-        {"key": "renterId", "value": "22222222-2222-2222-2222-222222222222",
-         "type": "default", "enabled": True},
-    ],
-    "_postman_variable_scope": "environment",
+def env(name, property_url, lease_url, payment_url, notification_url):
+    """The same collection, pointed either at the services or at the gateway."""
+    return {
+        "name": name,
+        "values": [
+            {"key": "propertyUrl", "value": property_url, "type": "default", "enabled": True},
+            {"key": "leaseUrl", "value": lease_url, "type": "default", "enabled": True},
+            {"key": "paymentUrl", "value": payment_url, "type": "default", "enabled": True},
+            {"key": "notificationUrl", "value": notification_url, "type": "default", "enabled": True},
+            # Always the real ports, whichever environment is selected.
+            {"key": "propertyDirect", "value": "http://localhost:8081", "type": "default", "enabled": True},
+            {"key": "leaseDirect", "value": "http://localhost:8082", "type": "default", "enabled": True},
+            {"key": "paymentDirect", "value": "http://localhost:8083", "type": "default", "enabled": True},
+            {"key": "notificationDirect", "value": "http://localhost:8084", "type": "default", "enabled": True},
+            # Never the gateway: a token's `iss` is built from the host it was
+            # requested through, and the services expect localhost:8180.
+            {"key": "keycloakUrl", "value": "http://localhost:8180", "type": "default", "enabled": True},
+            {"key": "keycloakClientId", "value": "houseagent-backend", "type": "default", "enabled": True},
+            {"key": "keycloakClientSecret", "value": "houseagent-dev-secret", "type": "secret", "enabled": True},
+            {"key": "keycloakPassword", "value": "password", "type": "secret", "enabled": True},
+            {"key": "accessToken", "value": "", "type": "secret", "enabled": True},
+            {"key": "agencyId", "value": "agency-a", "type": "default", "enabled": True},
+            {"key": "otherAgencyId", "value": "agency-b", "type": "default", "enabled": True},
+            {"key": "landlordId", "value": "11111111-1111-1111-1111-111111111111",
+             "type": "default", "enabled": True},
+            {"key": "renterId", "value": "22222222-2222-2222-2222-222222222222",
+             "type": "default", "enabled": True},
+        ],
+        "_postman_variable_scope": "environment",
+    }
+
+
+GATEWAY = "http://localhost:8000"
+
+environments = {
+    "local-dev.postman_environment.json": env(
+        "houseagentassistant - direct to services",
+        "http://localhost:8081", "http://localhost:8082",
+        "http://localhost:8083", "http://localhost:8084"),
+    "gateway.postman_environment.json": env(
+        "houseagentassistant - through the gateway",
+        GATEWAY, GATEWAY, GATEWAY, GATEWAY),
 }
+
 
 
 def count(items):
@@ -708,6 +748,7 @@ if __name__ == "__main__":
     out = pathlib.Path(__file__).parent
     (out / "houseagentassistant.postman_collection.json").write_text(
         json.dumps(collection, indent=2) + "\n", encoding="utf-8")
-    (out / "local-dev.postman_environment.json").write_text(
-        json.dumps(environment, indent=2) + "\n", encoding="utf-8")
+    for filename, document in environments.items():
+        (out / filename).write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
     print("requests:", count(collection["item"]))
+    print("environments:", ", ".join(environments))

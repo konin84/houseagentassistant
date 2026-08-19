@@ -20,6 +20,36 @@
 
 services:
 
+  # One origin in front of all four services, so a browser frontend has a single
+  # host to talk to and CORS is configured once. The routing table lives in
+  # infra/traefik/dynamic.yaml, which is also where the reasoning is.
+  #
+  # Configuration rather than a service anyone wrote: Quarkus has no Spring Cloud
+  # Gateway equivalent, deliberately, because a gateway that only copies bytes
+  # between sockets is a reverse proxy.
+  #
+  # It authenticates nothing. Every service still validates its own token.
+  gateway:
+    image: traefik:v3.2
+    container_name: hah-gateway
+    command:
+      - --providers.file.directory=/etc/traefik/dynamic
+      - --providers.file.watch=true
+      - --entrypoints.web.address=:80
+      - --api.dashboard=true
+      - --api.insecure=true
+      - --accesslog=true
+      - --log.level=INFO
+    ports:
+      - "8000:80"     # the API
+      - "8001:8080"   # dashboard: which routes exist and what they matched
+    volumes:
+      - ./infra/traefik:/etc/traefik/dynamic:ro
+    extra_hosts:
+      # Docker Desktop provides this already; the mapping is here so the same
+      # file works on Linux, where it is not provided.
+      - "host.docker.internal:host-gateway"
+
   postgres:
     image: postgres:18-alpine
     container_name: hah-postgres

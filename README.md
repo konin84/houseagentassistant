@@ -150,7 +150,13 @@ would actually deploy.
 ### Trying the API
 
 `postman/houseagentassistant.postman_collection.json` covers all 44 endpoints. Import it
-with `postman/local-dev.postman_environment.json`.
+with one of the two environments - the collection is identical either way, only the base
+URLs differ:
+
+| Environment | Talks to |
+|---|---|
+| `local-dev.postman_environment.json` | the four service ports directly |
+| `gateway.postman_environment.json` | `localhost:8000`, through the gateway |
 
 Run one request from the **Authentication** folder to get a token, then work down a
 service folder - each request saves the ids the next one needs, so nothing has to be
@@ -163,15 +169,25 @@ in the code - a collection that drifts is documentation that lies.
 ### Dev mode
 
 ```bash
-docker compose up -d keycloak
+docker compose up -d keycloak gateway
 cd property-service && ../mvnw quarkus:dev
 ```
 
-- Swagger UI: http://localhost:8081/q/swagger-ui
-- Health: http://localhost:8081/q/health
-- Keycloak admin: http://localhost:8180 (`admin` / `admin`)
+Running more than one service at once needs distinct debugger ports - Quarkus dev mode
+binds 5005 by default, and the second service to start will fail with `transport error
+202: bind failed`:
 
-Ports are 8081 property, 8082 lease, 8083 payment, 8084 notification.
+```bash
+cd lease-service && ../mvnw quarkus:dev -Ddebug=5006
+```
+
+| | |
+|---|---|
+| Services | 8081 property, 8082 lease, 8083 payment, 8084 notification |
+| Gateway | http://localhost:8000, dashboard on http://localhost:8001 |
+| Keycloak | http://localhost:8180 (`admin` / `admin`) |
+| Swagger UI | http://localhost:8081/q/swagger-ui |
+| Mailpit | http://localhost:8025 |
 
 ---
 
@@ -457,6 +473,60 @@ directly. The latter is only a CDI bean when OIDC is switched on, so injecting i
 every service failed to start the moment authentication was disabled - the exact mode a
 developer wants to run in. In production the identity's principal *is* the JWT, so
 nothing about deployed behaviour changes.
+
+---
+
+## The gateway
+
+```bash
+docker compose up -d gateway     # http://localhost:8000, dashboard on :8001
+```
+
+One origin in front of all four services, so a browser frontend has a single host to
+talk to and CORS is configured once instead of four times.
+
+It is **configuration, not a service anybody wrote**. Coming from Spring you would reach
+for Spring Cloud Gateway - a Java application to build, test and deploy. Quarkus has no
+equivalent on purpose: a gateway that only copies bytes between sockets is a reverse
+proxy, and reverse proxies already exist. The routing table lives in
+`infra/traefik/dynamic.yaml`; in a deployment it is replaced by an Ingress, and the
+table is the part worth keeping.
+
+### The routing table is not one prefix per service
+
+Worth seeing, because it is the first thing a gateway makes visible:
+
+| Path | Service |
+|---|---|
+| `/api/agency/houses`, `/api/marketplace` | property |
+| `/api/agency/leases`, `/api/landlord/leases` | lease |
+| `/api/agency/invoices`, `/api/agency/payments`, `/api/agency/payouts`, `/api/agency/settlement-config` | payment |
+| `/api/renter`, `/api/landlord/earnings` | payment |
+| `/api/me/contact`, `/api/contacts` | notification |
+
+`/api/agency` is split across three services and `/api/landlord` across two, because the
+paths were designed per service and audience rather than for routing. Traefik matches
+longer rules first, so the specific prefixes win.
+
+### It authenticates nothing
+
+Every service still validates its own bearer token, and that is deliberate. A gateway
+that authenticated and then forwarded "trusted" traffic would mean anything able to
+reach the internal network could act as anyone - and here, where `agency_id` in a token
+decides which customer's data comes back, that is the whole ballgame. The gateway
+forwards the `Authorization` header and forms no opinion about it.
+
+### Two things it deliberately does not route
+
+**Keycloak.** A token's `iss` claim is built from the host it was requested through, so
+issuing tokens via the gateway would stamp them with the gateway's address while the
+services expect `localhost:8180` - and every service would reject a perfectly valid
+token. Keycloak keeps its own port in both Postman environments.
+
+**`/q/health` and `/q/openapi`.** A health check exists to tell you whether *one
+instance* is up; asking a load balancer produces the least useful possible answer. The
+collection calls these on the direct ports even when everything else goes through the
+gateway, which is what the `*Direct` variables are for.
 
 ---
 
