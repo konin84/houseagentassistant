@@ -31,9 +31,12 @@ import java.util.Map;
  * environment variable can switch back on. The safety comes from the class being absent
  * rather than from it behaving well.
  *
- * <p>Without this, dev mode is not merely insecure but useless: with OIDC off there is
- * no identity at all, so every agency, renter and landlord endpoint answers 401 and the
- * only thing a developer can exercise is the anonymous marketplace.
+ * <p>It is also strictly a fallback. Dev mode now authenticates against the local
+ * Keycloak realm like every other environment, and a request carrying a real token is
+ * left completely alone - see the first check in
+ * {@link #augment(SecurityIdentity, AuthenticationRequestContext, Map)}. These headers
+ * only fill a vacuum, which is what lets a service be run and poked at with no Keycloak
+ * and no Docker at all.
  *
  * <h2>Using it</h2>
  *
@@ -67,6 +70,14 @@ public class DevIdentityAugmentor implements SecurityIdentityAugmentor {
     public Uni<SecurityIdentity> augment(SecurityIdentity identity,
                                          AuthenticationRequestContext context,
                                          Map<String, Object> attributes) {
+        // A real token wins, always. Once Keycloak has authenticated somebody, their
+        // identity is the answer and a header must not be able to quietly replace it -
+        // otherwise a request could act as someone other than its token says, which is
+        // exactly the confusion this shim exists to avoid rather than create.
+        if (!identity.isAnonymous()) {
+            return Uni.createFrom().item(identity);
+        }
+
         RoutingContext routing = HttpSecurityUtils.getRoutingContextAttribute(attributes);
         if (routing == null) {
             return Uni.createFrom().item(identity);

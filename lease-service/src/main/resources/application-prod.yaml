@@ -29,6 +29,9 @@ quarkus:
     client-id: ${OIDC_CLIENT_ID}
     credentials:
       secret: ${OIDC_CLIENT_SECRET}
+    # An API, not a website: a request with no token gets 401 rather than a redirect
+    # to a login page that no API client can follow.
+    application-type: service
 
   hibernate-orm:
     log:

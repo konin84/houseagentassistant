@@ -88,6 +88,125 @@ def folder(name, desc, items):
     return {"name": name, "description": desc, "item": items}
 
 
+def token_request(name, username, desc):
+    """A password-grant token request that stores the result in {{accessToken}}.
+
+    Password grant rather than the browser flow on purpose: there is no user agent in
+    the loop here, and a redirect is something an API client cannot follow. Keycloak
+    calls this Direct Access Grants, and it is enabled on the houseagent-backend client.
+    """
+    return {
+        "name": name,
+        "request": {
+            "auth": {"type": "noauth"},
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/x-www-form-urlencoded"}],
+            "body": {
+                "mode": "urlencoded",
+                "urlencoded": [
+                    {"key": "grant_type", "value": "password"},
+                    {"key": "client_id", "value": "{{keycloakClientId}}"},
+                    {"key": "client_secret", "value": "{{keycloakClientSecret}}"},
+                    {"key": "username", "value": username},
+                    {"key": "password", "value": "{{keycloakPassword}}"},
+                ],
+            },
+            "url": {
+                "raw": "{{keycloakUrl}}/realms/houseagent/protocol/openid-connect/token",
+                "host": ["{{keycloakUrl}}"],
+                "path": ["realms", "houseagent", "protocol", "openid-connect", "token"],
+            },
+            "description": desc,
+        },
+        "event": [{
+            "listen": "test",
+            "script": {
+                "type": "text/javascript",
+                "exec": [
+                    "// Stores the token so every other request in the collection uses it.",
+                    "if (pm.response.code === 200) {",
+                    "    const body = pm.response.json();",
+                    "    pm.collectionVariables.set('accessToken', body.access_token);",
+                    "",
+                    "    // Print the two claims the platform authorises on, because a",
+                    "    // token that is valid but missing them fails in a way that looks",
+                    "    // like a permissions bug rather than a realm misconfiguration.",
+                    "    const claims = JSON.parse(",
+                    "        Buffer.from(body.access_token.split('.')[1], 'base64').toString());",
+                    "    console.log('roles     ', (claims.realm_access || {}).roles);",
+                    "    console.log('agency_id ', claims.agency_id);",
+                    "    console.log('party_id  ', claims.party_id);",
+                    "} else {",
+                    "    console.log('Token request failed. Is Keycloak running?',",
+                    "                pm.response.code, pm.response.text());",
+                    "}",
+                ],
+            },
+        }],
+    }
+
+
+auth = folder(
+    "Authentication - get a token",
+    "Run **one** of these first - they are alternatives, not a sequence. Each stores "
+    "its token in `{{accessToken}}`, which every other request in the collection sends "
+    "as a bearer token, so switching who you are is one click.\n\n"
+    "Running the whole folder leaves you holding the last token, `platform-admin`, "
+    "which deliberately has neither claim - so the agency and personal folders will "
+    "then answer 403. Start with **agent-a** unless you want something else.\n\n"
+    "Needs Keycloak: `docker compose up -d keycloak`. The realm, roles, claim mappers "
+    "and these six users are imported automatically from `infra/keycloak`.\n\n"
+    "Every user's password is `password` - this realm is for development and says so.\n\n"
+    "The test script prints `roles`, `agency_id` and `party_id` to the Postman console. "
+    "Worth glancing at: a token that is valid but missing those claims produces 403s "
+    "that look like a permissions bug rather than a realm problem.\n\n"
+    "Without Keycloak you can still use the `X-Dev-*` headers already on every request "
+    "- but only while `{{accessToken}}` is empty, because a real token always wins.",
+    [
+        token_request("Token - agent-a (AGENT, agency-a)", "agent-a",
+                      "The everyday agency user. agency_id=agency-a."),
+        token_request("Token - admin-a (AGENCY_ADMIN, agency-a)", "admin-a",
+                      "Needed for deleting a house and for setting the settlement "
+                      "policy - an AGENT gets 403 on both."),
+        token_request("Token - agent-b (AGENT, agency-b)", "agent-b",
+                      "A second agency. Get this token, then re-run Get house from the "
+                      "property folder: 404, because it belongs to agency-a. That is "
+                      "tenant isolation with a real token rather than an edited header."),
+        token_request("Token - landlord-one (LANDLORD)", "landlord-one",
+                      "party_id 11111111-1111-1111-1111-111111111111, matching "
+                      "{{landlordId}}, so the portfolio and earnings folders return the "
+                      "leases created by the agency folders."),
+        token_request("Token - renter-one (RENTER)", "renter-one",
+                      "party_id 22222222-2222-2222-2222-222222222222, matching "
+                      "{{renterId}}."),
+        token_request("Token - platform-admin (PLATFORM_ADMIN)", "platform-admin",
+                      "Carries no agency_id and no party_id, so agency and personal "
+                      "endpoints both refuse it. Useful for checking that a role alone "
+                      "is not enough."),
+        {
+            "name": "Clear token (back to X-Dev-* headers)",
+            "request": {
+                "auth": {"type": "noauth"},
+                "method": "GET",
+                "header": [],
+                "url": {"raw": "{{keycloakUrl}}/realms/houseagent/.well-known/openid-configuration",
+                        "host": ["{{keycloakUrl}}"],
+                        "path": ["realms", "houseagent", ".well-known",
+                                 "openid-configuration"]},
+                "description": "Empties {{accessToken}} so the collection falls back to "
+                               "the dev headers. Also a quick check that the realm "
+                               "imported: it should list the token endpoint.",
+            },
+            "event": [{
+                "listen": "test",
+                "script": {"type": "text/javascript",
+                           "exec": ["pm.collectionVariables.set('accessToken', '');",
+                                    "console.log('accessToken cleared');"]},
+            }],
+        },
+    ])
+
+
 # --------------------------------------------------------------- property-service
 
 houses = folder(
@@ -505,8 +624,15 @@ collection = {
         {"key": "leaseUrl", "value": "http://localhost:8082"},
         {"key": "paymentUrl", "value": "http://localhost:8083"},
         {"key": "notificationUrl", "value": "http://localhost:8084"},
+        {"key": "keycloakUrl", "value": "http://localhost:8180"},
+        {"key": "keycloakClientId", "value": "houseagent-backend"},
+        {"key": "keycloakClientSecret", "value": "houseagent-dev-secret",
+         "description": "Matches the dev realm in infra/keycloak. Not a production secret."},
+        {"key": "keycloakPassword", "value": "password",
+         "description": "Every seeded user shares it. Development realm only."},
         {"key": "accessToken", "value": "",
-         "description": "Empty in dev, where it is ignored. A Keycloak token otherwise."},
+         "description": "Filled in by the Authentication folder. While empty, the "
+                        "X-Dev-* headers stand in."},
         {"key": "agencyId", "value": "agency-a"},
         {"key": "otherAgencyId", "value": "agency-b",
          "description": "Swap into X-Dev-Agency to watch isolation answer 404."},
@@ -522,6 +648,7 @@ collection = {
         {"key": "payoutId", "value": "", "description": "Captured by List payouts."},
     ],
     "item": [
+        auth,
         folder("property-service (8081)",
                "Houses, their photographs, and the public marketplace. Runs top to "
                "bottom: the house created first is the one every later request uses.",
@@ -554,6 +681,10 @@ environment = {
         {"key": "leaseUrl", "value": "http://localhost:8082", "type": "default", "enabled": True},
         {"key": "paymentUrl", "value": "http://localhost:8083", "type": "default", "enabled": True},
         {"key": "notificationUrl", "value": "http://localhost:8084", "type": "default", "enabled": True},
+        {"key": "keycloakUrl", "value": "http://localhost:8180", "type": "default", "enabled": True},
+        {"key": "keycloakClientId", "value": "houseagent-backend", "type": "default", "enabled": True},
+        {"key": "keycloakClientSecret", "value": "houseagent-dev-secret", "type": "secret", "enabled": True},
+        {"key": "keycloakPassword", "value": "password", "type": "secret", "enabled": True},
         {"key": "accessToken", "value": "", "type": "secret", "enabled": True},
         {"key": "agencyId", "value": "agency-a", "type": "default", "enabled": True},
         {"key": "otherAgencyId", "value": "agency-b", "type": "default", "enabled": True},

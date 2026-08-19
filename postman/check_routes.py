@@ -65,6 +65,10 @@ def routes_from_collection():
                 continue
             request = item["request"]
             raw = request["url"]["raw"].split("?")[0]
+            # Keycloak's own endpoints are somebody else's API. Checking them against
+            # our @Path annotations would only ever report that they are missing.
+            if raw.startswith("{{keycloakUrl}}"):
+                continue
             path = re.sub(r"^\{\{\w+\}\}", "", raw)
             found.add((request["method"], normalise(path), item["name"]))
 

@@ -1,0 +1,243 @@
+"""Generates the Keycloak realm import.
+
+Kept as a script because one field - the declarative user profile - is a JSON document
+embedded as a *string* inside the realm JSON. Hand-escaping that is how a realm import
+ends up silently dropping the two claims this whole platform authorises on.
+
+    python infra/keycloak/build_realm.py
+"""
+
+import json
+import pathlib
+
+REALM = "houseagent"
+CLIENT_ID = "houseagent-backend"
+CLIENT_SECRET = "houseagent-dev-secret"
+
+# Matches the ids already used by the Postman collection and the tests, so a token and
+# a seeded database row describe the same person.
+LANDLORD_PARTY = "11111111-1111-1111-1111-111111111111"
+RENTER_PARTY = "22222222-2222-2222-2222-222222222222"
+
+
+def attribute_mapper(claim):
+    """Copies a user attribute into the token under the same name.
+
+    access.token.claim is the one that matters: the services read a bearer token, so a
+    claim that appears only in the ID token would be invisible to them.
+    """
+    return {
+        "name": claim,
+        "protocol": "openid-connect",
+        "protocolMapper": "oidc-usermodel-attribute-mapper",
+        "consentRequired": False,
+        "config": {
+            "user.attribute": claim,
+            "claim.name": claim,
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true",
+        },
+    }
+
+
+def profile_attribute(name, display, max_length):
+    return {
+        "name": name,
+        "displayName": display,
+        "multivalued": False,
+        "permissions": {"view": ["admin", "user"], "edit": ["admin"]},
+        "validations": {"length": {"max": max_length}},
+        "annotations": {},
+    }
+
+
+# Keycloak 24 and later refuse to store attributes the user profile does not declare,
+# so agency_id and party_id are declared here explicitly. Without this the import
+# succeeds, the users appear correct in the console, and every token comes back without
+# the two claims the platform authorises on - which is a genuinely baffling afternoon.
+USER_PROFILE = {
+    "attributes": [
+        {
+            "name": "username",
+            "displayName": "${username}",
+            "validations": {
+                "length": {"min": 3, "max": 255},
+                "username-prohibited-characters": {},
+                "up-username-not-idn-homograph": {},
+            },
+            "permissions": {"view": ["admin", "user"], "edit": ["admin", "user"]},
+            "multivalued": False,
+        },
+        {
+            "name": "email",
+            "displayName": "${email}",
+            "validations": {"email": {}, "length": {"max": 255}},
+            "permissions": {"view": ["admin", "user"], "edit": ["admin", "user"]},
+            "multivalued": False,
+        },
+        {
+            "name": "firstName",
+            "displayName": "${firstName}",
+            "validations": {"length": {"max": 255}, "person-name-prohibited-characters": {}},
+            "permissions": {"view": ["admin", "user"], "edit": ["admin", "user"]},
+            "multivalued": False,
+        },
+        {
+            "name": "lastName",
+            "displayName": "${lastName}",
+            "validations": {"length": {"max": 255}, "person-name-prohibited-characters": {}},
+            "permissions": {"view": ["admin", "user"], "edit": ["admin", "user"]},
+            "multivalued": False,
+        },
+        profile_attribute("agency_id", "Agency", 64),
+        profile_attribute("party_id", "Party", 64),
+    ],
+    "groups": [
+        {"name": "user-metadata", "displayHeader": "User metadata",
+         "displayDescription": "Attributes this platform authorises on"}
+    ],
+    # Belt and braces: declared attributes above are managed regardless, but this stops
+    # an attribute added later from being silently discarded.
+    "unmanagedAttributePolicy": "ENABLED",
+}
+
+
+def user(username, roles, agency=None, party=None, first="", last="", email=None):
+    attributes = {}
+    if agency:
+        attributes["agency_id"] = [agency]
+    if party:
+        attributes["party_id"] = [party]
+    return {
+        "username": username,
+        "enabled": True,
+        "emailVerified": True,
+        "firstName": first,
+        "lastName": last,
+        "email": email or (username + "@houseagent.local"),
+        "credentials": [{"type": "password", "value": "password", "temporary": False}],
+        "realmRoles": roles,
+        "attributes": attributes,
+    }
+
+
+realm = {
+    "realm": REALM,
+    "enabled": True,
+    "displayName": "houseagentassistant",
+
+    # Development settings. sslRequired none because this runs on plain HTTP on a
+    # laptop; a deployed realm must not do this.
+    "sslRequired": "none",
+    "registrationAllowed": False,
+    "loginWithEmailAllowed": True,
+    "duplicateEmailsAllowed": False,
+    "resetPasswordAllowed": False,
+    "editUsernameAllowed": False,
+
+    # Long enough not to expire mid-session while clicking through Postman, short
+    # enough to still be a token rather than a password.
+    "accessTokenLifespan": 1800,
+    "ssoSessionIdleTimeout": 7200,
+    "ssoSessionMaxLifespan": 36000,
+
+    "roles": {
+        "realm": [
+            {"name": "PLATFORM_ADMIN",
+             "description": "Operates the platform itself. Crosses agency boundaries by design."},
+            {"name": "AGENCY_ADMIN",
+             "description": "Owns one agency's account: billing, staff, settings."},
+            {"name": "AGENT",
+             "description": "Agency staff who list houses and manage leases."},
+            {"name": "LANDLORD",
+             "description": "Owns houses. Platform-wide, not agency-scoped."},
+            {"name": "RENTER",
+             "description": "Rents a house and pays rent. Platform-wide."},
+        ]
+    },
+
+    # The two claim mappers sit directly on the client rather than in a client scope of
+    # their own.
+    #
+    # A scope reads better, but a realm import creates clients before it creates the
+    # built-in scopes, so naming any scope on a client means naming things that do not
+    # exist yet. Keycloak logs "Referenced client scope 'roles' doesn't exist. Ignoring"
+    # and carries on - and the client silently loses the built-in roles scope, so every
+    # token comes back without realm_access.roles and every @RolesAllowed fails. Leaving
+    # defaultClientScopes unset lets Keycloak attach its own defaults once they exist.
+    "clients": [
+        {
+            "clientId": CLIENT_ID,
+            "name": "houseagentassistant backend",
+            "description": ("The four services validate bearer tokens against this "
+                            "client, and it also issues them by password grant for "
+                            "local testing."),
+            "enabled": True,
+            "protocol": "openid-connect",
+            "publicClient": False,
+            "secret": CLIENT_SECRET,
+            "bearerOnly": False,
+            "serviceAccountsEnabled": False,
+            # Off: there is no browser flow here, only bearer tokens.
+            "standardFlowEnabled": False,
+            "implicitFlowEnabled": False,
+            # On: this is how Postman and curl obtain a token for a named user.
+            "directAccessGrantsEnabled": True,
+            "fullScopeAllowed": True,
+            "attributes": {"access.token.lifespan": "1800"},
+            "protocolMappers": [attribute_mapper("agency_id"), attribute_mapper("party_id")],
+        }
+    ],
+
+    "users": [
+        user("agent-a", ["AGENT"], agency="agency-a",
+             first="Adjoua", last="Agent", email="agent-a@agency-a.ci"),
+        user("admin-a", ["AGENCY_ADMIN", "AGENT"], agency="agency-a",
+             first="Akissi", last="Admin", email="admin-a@agency-a.ci"),
+        # A second agency, so isolation can be demonstrated with a real token rather
+        # than by editing a header.
+        user("agent-b", ["AGENT"], agency="agency-b",
+             first="Yao", last="Agent", email="agent-b@agency-b.ci"),
+        user("landlord-one", ["LANDLORD"], party=LANDLORD_PARTY,
+             first="Kouassi", last="Konan", email="landlord@example.ci"),
+        user("renter-one", ["RENTER"], party=RENTER_PARTY,
+             first="Ama", last="Kouassi", email="renter@example.ci"),
+        user("platform-admin", ["PLATFORM_ADMIN"],
+             first="Platform", last="Admin"),
+    ],
+
+    "components": {
+        "org.keycloak.userprofile.UserProfileProvider": [
+            {
+                "name": "Declarative User Profile",
+                "providerId": "declarative-user-profile",
+                "subType": None,
+                "subComponents": {},
+                "config": {"kc.user.profile.config": [json.dumps(USER_PROFILE)]},
+            }
+        ]
+    },
+}
+
+
+if __name__ == "__main__":
+    out = pathlib.Path(__file__).parent / "houseagent-realm.json"
+    out.write_text(json.dumps(realm, indent=2) + "\n", encoding="utf-8")
+
+    # Prove both the realm and the embedded profile parse, since the second one is a
+    # string as far as the first is concerned and a typo in it fails silently.
+    reloaded = json.loads(out.read_text(encoding="utf-8"))
+    embedded = json.loads(
+        reloaded["components"]["org.keycloak.userprofile.UserProfileProvider"][0]
+        ["config"]["kc.user.profile.config"][0])
+
+    declared = [a["name"] for a in embedded["attributes"]]
+    assert "agency_id" in declared and "party_id" in declared, declared
+
+    print("realm:", reloaded["realm"])
+    print("roles:", ", ".join(r["name"] for r in reloaded["roles"]["realm"]))
+    print("users:", ", ".join(u["username"] for u in reloaded["users"]))
+    print("profile attributes:", ", ".join(declared))

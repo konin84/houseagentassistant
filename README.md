@@ -63,6 +63,8 @@ no agency rather than falling back to a default.
 | `payment-service` | 8083 | **Complete** | Invoices, payments, commission, landlord payouts |
 | `notification-service` | 8084 | **Complete** | Contact details, email delivery and retry |
 
+All four validate bearer JWTs from the Keycloak realm in `infra/keycloak/`.
+
 Landlords deliberately have no service of their own: a landlord is a Keycloak
 principal, their link to houses lives in `property-service`, what they are owed lives
 in `payment-service`, and where to reach them lives in `notification-service`.
@@ -119,8 +121,8 @@ looking at:
 | File | Holds |
 |---|---|
 | `application.yaml` | What is true everywhere - schema strategy, topic names, serializers - plus the `"%test"` block |
-| `application-dev.yaml` | A laptop: localhost database, OIDC off, SQL logging, Mailpit |
-| `application-prod.yaml` | A deployment: everything from the environment, OIDC on, TLS required |
+| `application-dev.yaml` | A laptop: localhost database, local Keycloak, SQL logging, Mailpit |
+| `application-prod.yaml` | A deployment: everything from the environment, TLS required |
 
 Test overrides live in the shared file rather than an `application-test.yaml`, because
 tests are not a deployment target - they are a variation on the shared configuration,
@@ -148,28 +150,11 @@ would actually deploy.
 ### Trying the API
 
 `postman/houseagentassistant.postman_collection.json` covers all 44 endpoints. Import it
-with `postman/local-dev.postman_environment.json` and work down a service folder - each
-request saves the ids the next one needs.
+with `postman/local-dev.postman_environment.json`.
 
-Dev mode runs with OIDC off, so identity comes from three headers rather than a token:
-
-| Header | Becomes |
-|---|---|
-| `X-Dev-Roles` | `AGENT`, `AGENCY_ADMIN`, `LANDLORD` or `RENTER` |
-| `X-Dev-Agency` | the `agency_id` claim |
-| `X-Dev-Party` | the `party_id` claim |
-
-```bash
-curl -H 'X-Dev-Roles: AGENT' -H 'X-Dev-Agency: agency-a' \
-     http://localhost:8081/api/agency/houses
-```
-
-They are read by `DevIdentityAugmentor`, which carries `@IfBuildProfile("dev")`. That is
-a build-time condition, not a runtime flag: in a production build the class is not
-present at all, so no misconfigured environment variable can switch header-derived
-identity back on. The safety is in the absence, not in the behaviour.
-
-Send no headers and you are anonymous, which is how the marketplace is meant to be used.
+Run one request from the **Authentication** folder to get a token, then work down a
+service folder - each request saves the ids the next one needs, so nothing has to be
+copied by hand.
 
 The collection is generated from `postman/build_collection.py`, and
 `postman/check_routes.py` compares every request in it against the `@Path` annotations
@@ -178,20 +163,13 @@ in the code - a collection that drifts is documentation that lies.
 ### Dev mode
 
 ```bash
+docker compose up -d keycloak
 cd property-service && ../mvnw quarkus:dev
 ```
 
-Authentication is **disabled in dev** (`oidc.enabled: false`) so the API is usable
-before Keycloak exists - see the headers above for how you say who you are. Tests still
-exercise the real role checks, via `@TestSecurity` and a real OIDC configuration.
-
-Note that this only works because `CallerContext` and `AgencyTenantResolver` depend on
-`SecurityIdentity` rather than on `JsonWebToken`. The latter is only a bean when OIDC is
-switched on, so injecting it directly made every service fail to start in exactly the
-mode a developer wants to run it in.
-
 - Swagger UI: http://localhost:8081/q/swagger-ui
 - Health: http://localhost:8081/q/health
+- Keycloak admin: http://localhost:8180 (`admin` / `admin`)
 
 Ports are 8081 property, 8082 lease, 8083 payment, 8084 notification.
 
@@ -392,6 +370,96 @@ elsewhere is the cost of multi-tenancy rather than of messaging.
 
 ---
 
+## Authentication
+
+Every service validates **bearer JWTs** issued by Keycloak. The realm, its roles, the
+two claim mappers and six seeded users are imported automatically from
+`infra/keycloak/` when the container starts, so there is nothing to click through:
+
+```bash
+docker compose up -d keycloak
+```
+
+### The two claims everything turns on
+
+A validated token is not enough. Authorisation needs to know *which agency* or *which
+person* is asking, and those are custom claims mapped from user attributes:
+
+| Claim | On | Used for |
+|---|---|---|
+| `agency_id` | AGENT, AGENCY_ADMIN | the `@TenantId` discriminator - every agency-scoped query |
+| `party_id` | LANDLORD, RENTER | the explicit predicate in the four untenanted read paths |
+
+Neither is ever read from a header, path or query parameter. `CallerContext` takes them
+from the validated token and nowhere else, which is why `platform-admin` - a real user
+with a real role and neither claim - gets 403 from both the agency and the personal
+endpoints. A role says what kind of thing you may do; the claims say whose data it is.
+
+### Seeded users
+
+All six share the password `password`, because this realm is for development and says so
+in its own name.
+
+| User | Role | Claim |
+|---|---|---|
+| `agent-a` | AGENT | `agency_id=agency-a` |
+| `admin-a` | AGENCY_ADMIN, AGENT | `agency_id=agency-a` |
+| `agent-b` | AGENT | `agency_id=agency-b` |
+| `landlord-one` | LANDLORD | `party_id=1111…` |
+| `renter-one` | RENTER | `party_id=2222…` |
+| `platform-admin` | PLATFORM_ADMIN | neither, deliberately |
+
+`agent-b` exists so tenant isolation can be demonstrated with a real token rather than
+an edited header: get their token, read agency-a's house, get a 404.
+
+```bash
+TOKEN=$(curl -s -X POST \
+  http://localhost:8180/realms/houseagent/protocol/openid-connect/token \
+  -d grant_type=password -d client_id=houseagent-backend \
+  -d client_secret=houseagent-dev-secret \
+  -d username=agent-a -d password=password | jq -r .access_token)
+
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8081/api/agency/houses
+```
+
+Password grant rather than a browser flow: these are APIs, and `application-type:
+service` means a request without a token gets a 401 rather than a redirect to a login
+page no API client can follow.
+
+### Running without Keycloak
+
+Dev builds also accept three headers, so a service can be started and poked at with no
+Docker at all:
+
+```bash
+curl -H 'X-Dev-Roles: AGENT' -H 'X-Dev-Agency: agency-a' \
+     http://localhost:8081/api/agency/houses
+```
+
+Two things make that safe rather than a back door.
+
+`DevIdentityAugmentor` carries `@IfBuildProfile("dev")` - a build-time condition, not a
+runtime flag. In a production build the class is not present at all, so no misconfigured
+environment variable can switch header-derived identity back on. The safety is in the
+absence, not in the behaviour.
+
+And **a real token always wins**. The augmentor returns immediately if the identity is
+already authenticated, so headers can only ever fill a vacuum. Presenting `agent-b`'s
+token alongside `X-Dev-Agency: agency-a` still answers 404, because the token decides.
+
+Send no headers and no token and you are anonymous, which is exactly how the public
+marketplace is meant to be used.
+
+### Why the services depend on `SecurityIdentity`
+
+`CallerContext` and `AgencyTenantResolver` read the identity, not `JsonWebToken`
+directly. The latter is only a CDI bean when OIDC is switched on, so injecting it meant
+every service failed to start the moment authentication was disabled - the exact mode a
+developer wants to run in. In production the identity's principal *is* the JWT, so
+nothing about deployed behaviour changes.
+
+---
+
 ## House images
 
 Cloudinary hosts the bytes. This service stores only a **public id** - a path like
@@ -565,9 +633,9 @@ a failure means a bug rather than a slow machine.
 
 ## Next
 
-1. **Real Keycloak realm** with `agency_id` and `party_id` protocol mappers, replacing
-   `oidc.enabled: false` in dev and taking over `contact` as the source of truth for
-   addresses.
+1. **Keycloak as the source of truth for contact details.** The realm issues tokens,
+   but `notification-service` still keeps its own `contact` table; that should become a
+   cache of Keycloak rather than the record.
 2. **A real payment provider.** `PaymentMethod.MOBILE_MONEY` and the provider-reference
    idempotency are modelled; nothing yet talks to Wave or Orange Money, and there is no
    authenticated webhook endpoint for their callbacks.

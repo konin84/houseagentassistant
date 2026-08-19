@@ -13,10 +13,23 @@ quarkus:
     jdbc:
       url: jdbc:postgresql://localhost:5432/houseagent_lease
 
-  # Authentication is off so the API is usable before Keycloak exists. The role
-  # checks are still real and still exercised - by the tests, which keep OIDC on.
+  # Real bearer-token authentication against the local Keycloak realm, the same way
+  # every other environment works. Start it with:
+  #
+  #     docker compose up -d keycloak
+  #
+  # application-type: service means this is an API and not a website - a request with
+  # no token gets 401 rather than a redirect to a login page.
+  #
+  # If Keycloak is not running the service still starts, and the X-Dev-* headers read
+  # by DevIdentityAugmentor stand in. A real token always takes precedence over them.
   oidc:
-    enabled: false
+    enabled: true
+    auth-server-url: ${OIDC_AUTH_SERVER_URL:http://localhost:8180/realms/houseagent}
+    client-id: ${OIDC_CLIENT_ID:houseagent-backend}
+    credentials:
+      secret: ${OIDC_CLIENT_SECRET:houseagent-dev-secret}
+    application-type: service
 
   hibernate-orm:
     log:
