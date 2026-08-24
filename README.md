@@ -166,6 +166,11 @@ The collection is generated from `postman/build_collection.py`, and
 `postman/check_routes.py` compares every request in it against the `@Path` annotations
 in the code - a collection that drifts is documentation that lies.
 
+**Building a frontend?** `docs/frontend.md` is written for that: which client to log in
+with, what the two claims mean, what each status code implies for the UI, and the
+handful of behaviours that surprise people - a house vanishing from the marketplace
+when it is let, invoices appearing on their own, and paying being two steps.
+
 ### Dev mode
 
 ```bash
@@ -395,6 +400,18 @@ two claim mappers and six seeded users are imported automatically from
 ```bash
 docker compose up -d keycloak
 ```
+
+### Two clients, because browsers and scripts need different flows
+
+| Client | Flow | For |
+|---|---|---|
+| `houseagent-backend` | password grant, confidential | Postman, curl, tests - anywhere there is no browser to redirect |
+| `houseagent-web` | authorization code + PKCE, public | the frontend |
+
+The web client cannot use password grant, deliberately: a frontend must never see the
+user's password, which is the whole point of redirecting to Keycloak. PKCE is mandatory
+rather than optional, and redirect URIs are matched exactly. `docs/frontend.md` covers
+what a frontend developer needs.
 
 ### The two claims everything turns on
 

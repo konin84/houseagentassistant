@@ -14,6 +14,13 @@ REALM = "houseagent"
 CLIENT_ID = "houseagent-backend"
 CLIENT_SECRET = "houseagent-dev-secret"
 
+WEB_CLIENT_ID = "houseagent-web"
+
+# Where the frontend dev server runs. Add to these rather than loosening them:
+# Keycloak matches redirect URIs exactly, and a wildcard host would let any site
+# start a login and receive the resulting code.
+WEB_ORIGINS = ["http://localhost:3000", "http://localhost:5173"]
+
 # Matches the ids already used by the Postman collection and the tests, so a token and
 # a seeded database row describe the same person.
 LANDLORD_PARTY = "11111111-1111-1111-1111-111111111111"
@@ -189,7 +196,48 @@ realm = {
             "fullScopeAllowed": True,
             "attributes": {"access.token.lifespan": "1800"},
             "protocolMappers": [attribute_mapper("agency_id"), attribute_mapper("party_id")],
-        }
+        },
+        {
+            "clientId": WEB_CLIENT_ID,
+            "name": "houseagentassistant web frontend",
+            "description": ("Browser client. Authorization code with PKCE, because a "
+                            "single-page app cannot keep a secret and must not handle "
+                            "the user's password."),
+            "enabled": True,
+            "protocol": "openid-connect",
+
+            # Public: the app ships to a browser, so anything embedded in it is
+            # readable. PKCE is what replaces the secret - the client proves it is
+            # the same one that started the flow, without holding anything.
+            "publicClient": True,
+            "standardFlowEnabled": True,
+
+            # Off deliberately. Password grant would mean the frontend collecting
+            # and forwarding the user's actual password, which is what the redirect
+            # to Keycloak exists to avoid. It is also gone in OAuth 2.1. The
+            # backend client keeps it for Postman and curl, where there is no
+            # browser to redirect.
+            "directAccessGrantsEnabled": False,
+            "implicitFlowEnabled": False,
+
+            "redirectUris": [origin + "/*" for origin in WEB_ORIGINS],
+            # "+" means "the redirect URIs above", so the two lists cannot drift.
+            "webOrigins": ["+"],
+
+            "fullScopeAllowed": True,
+            "attributes": {
+                # Makes PKCE mandatory rather than optional. Without this a client
+                # can simply omit the challenge and the protection is gone.
+                "pkce.code.challenge.method": "S256",
+                "access.token.lifespan": "900",
+                # Not a top-level field on a client, unlike redirectUris - Keycloak
+                # refuses the whole import if it is put there.
+                "post.logout.redirect.uris": "+",
+            },
+            # Repeated from the backend client because the mappers live on clients
+            # rather than in a shared scope - see the note above the clients list.
+            "protocolMappers": [attribute_mapper("agency_id"), attribute_mapper("party_id")],
+        },
     ],
 
     "users": [
@@ -239,5 +287,6 @@ if __name__ == "__main__":
 
     print("realm:", reloaded["realm"])
     print("roles:", ", ".join(r["name"] for r in reloaded["roles"]["realm"]))
+    print("clients:", ", ".join(c["clientId"] for c in reloaded["clients"]))
     print("users:", ", ".join(u["username"] for u in reloaded["users"]))
     print("profile attributes:", ", ".join(declared))
