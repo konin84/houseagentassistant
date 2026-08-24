@@ -166,6 +166,10 @@ The collection is generated from `postman/build_collection.py`, and
 `postman/check_routes.py` compares every request in it against the `@Path` annotations
 in the code - a collection that drifts is documentation that lies.
 
+**New here?** `docs/user-guide.md` walks the whole system as a story - an agency lists
+a house, a renter finds it, a lease is signed, rent is invoiced and paid, the landlord
+is emailed - with the real responses at each step. It doubles as a manual smoke test.
+
 **Building a frontend?** `docs/frontend.md` is written for that: which client to log in
 with, what the two claims mean, what each status code implies for the UI, and the
 handful of behaviours that surprise people - a house vanishing from the marketplace

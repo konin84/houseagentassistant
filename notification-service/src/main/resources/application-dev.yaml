@@ -40,6 +40,11 @@ quarkus:
     port: ${MAIL_PORT:1025}
     start-tls: DISABLED
     login: DISABLED
+    # Quarkus defaults this to true in dev mode, which quietly turns every send into
+    # a log line - so the notification looks like it worked, Mailpit stays empty, and
+    # the reason is nowhere near the symptom. Mailpit exists precisely so these can be
+    # read, and it catches everything, so there is nothing to protect against here.
+    mock: false
 
   hibernate-orm:
     log:

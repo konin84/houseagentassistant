@@ -563,64 +563,82 @@ health = folder(
 
 DESCRIPTION = """Every endpoint across the four services of houseagentassistant.
 
-## Against dev mode
+## Setting up
 
-Start whichever services you need, each from its own folder:
+```
+docker compose up -d keycloak gateway redpanda mailpit
+```
+
+Then each service from its own folder. Quarkus dev mode binds debugger port 5005, so
+give the second and later ones their own:
 
 ```
 cd property-service     && ../mvnw quarkus:dev
-cd lease-service        && ../mvnw quarkus:dev
-cd payment-service      && ../mvnw quarkus:dev
-cd notification-service && ../mvnw quarkus:dev
+cd lease-service        && ../mvnw quarkus:dev -Ddebug=5006
+cd payment-service      && ../mvnw quarkus:dev -Ddebug=5007
+cd notification-service && ../mvnw quarkus:dev -Ddebug=5008
 ```
 
-Dev mode runs with OIDC switched off, so identity comes from three headers:
+## Pick an environment
 
-| Header | Meaning |
-|---|---|
-| `X-Dev-Roles` | `AGENT`, `AGENCY_ADMIN`, `LANDLORD` or `RENTER` |
-| `X-Dev-Agency` | becomes the `agency_id` claim |
-| `X-Dev-Party` | becomes the `party_id` claim |
+The collection is the same either way; only the base URLs differ.
 
-They are already set correctly on every request here. They are read by
-`DevIdentityAugmentor`, which carries `@IfBuildProfile("dev")` and is therefore absent
-from a production build - a deployed service ignores them entirely. Send none of them
-and you are an anonymous visitor, which is how the marketplace folder works.
+| Environment | Talks to | Use when |
+|---|---|---|
+| `local-dev` | the four ports directly | debugging one service |
+| `gateway` | `localhost:8000` | everything else, and what a frontend will use |
 
-## Against a deployed service
+## Logging in
 
-Point the four `*Url` variables at the deployment and set `accessToken` to a Keycloak
-token. The collection already sends it as a bearer token; the `X-Dev-*` headers become
-inert.
+Run **one** request from the **Authentication** folder. It stores a token in
+`{{accessToken}}`, which every other request sends as a bearer token, so changing who
+you are is one click. Start with `agent-a`.
+
+The realm has two clients. This collection uses `houseagent-backend`, which allows
+password grant because there is no browser here to redirect. A frontend uses
+`houseagent-web` instead - authorization code with PKCE, and password grant refused. See
+`docs/frontend.md`.
+
+### Without Keycloak
+
+Every request also carries `X-Dev-Roles`, `X-Dev-Agency` and `X-Dev-Party`. They are
+read by a bean that exists only in dev builds, and only when no real token is present -
+so they let you poke at a service with no Docker at all, and stop mattering the moment
+you fetch a token. Send neither and you are an anonymous visitor, which is how the
+marketplace folder works.
 
 ## Suggested order
 
-Run the service folders top to bottom, in this order:
-
-1. **property-service** - creates a house and leaves `{{houseId}}` set
+1. **property-service** - creates a house, leaves `{{houseId}}` set
 2. **lease-service** - signs a lease against it
-3. **payment-service** - invoices raised from that lease
-4. **notification-service** - independent of the rest
+3. **payment-service** - invoices derived from that lease
+4. **notification-service** - contact details; independent of the rest
 
-Requests save ids into collection variables as they go, so working down a folder needs
-no copying by hand. Watch the Postman console to see what was captured.
+Ids are captured into collection variables as you go, so a folder can be worked top to
+bottom without copying anything. Watch the Postman console to see what was captured.
 
-Two folders need more than the service itself:
+`docs/user-guide.md` walks the same path as a story, with what each person sees and why.
 
-- **payment-service** needs `docker compose up -d redpanda`, or it never hears that a
-  lease was signed and has nothing to bill. Every list will be correctly empty.
+## Two folders need more than the service
+
+- **payment-service** needs `redpanda`. It learns what to bill from lease events, so
+  without a broker it never hears about a signed lease and every list is correctly
+  empty. Invoices appear about a minute after signing, when the generator next runs.
 - **Agency - images** needs `CLOUDINARY_*` in `.env`, or the upload ticket answers 503.
 
-Everything else works with nothing running but the service and PostgreSQL.
-
-## Seeing isolation work
+## Seeing the rules work
 
 Most of the interesting behaviour is what these endpoints *refuse*:
 
-- Change `X-Dev-Agency` to `{{otherAgencyId}}` on **Get house** - 404, not 403.
-- Send **Sign lease** twice - the second is 409, from a database constraint.
-- Send **Record a settled payment** twice with the same reference - 409, invoice untouched.
-- Change `X-Dev-Roles` to `AGENT` on **Delete house** - 403.
+- Get a token as `agent-b`, then re-run **Get house** - 404, not 403. Another agency's
+  house and a house that does not exist are deliberately indistinguishable.
+- Send **Sign lease** twice - the second is 409, refused by a database constraint rather
+  than by application code.
+- Send **Record a settled payment** twice with the same reference - 409, and the invoice
+  is left untouched.
+- Use the `agent-a` token on **Delete house** - 403, it needs AGENCY_ADMIN.
+- Use the `platform-admin` token anywhere - 403 everywhere, because a role alone is not
+  enough. The agency and personal endpoints need a claim it deliberately lacks.
 """
 
 collection = {
