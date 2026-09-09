@@ -10,6 +10,7 @@ public final class Topics {
     public static final String HOUSE = "house-events";
     public static final String LEASE = "lease-events";
     public static final String PAYMENT = "payment-events";
+    public static final String AGENCY = "agency-events";
 
     /**
      * Kafka header carrying the agency a message belongs to.

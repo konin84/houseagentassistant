@@ -126,7 +126,44 @@ a landlord's behalf when taking them on, with `PUT /api/contacts/{partyId}`.
 
 ---
 
-## 3. The agency decides how money flows
+## 3. What the agency is allowed to hold
+
+Every agency is on a plan, and the plan caps how many houses it may have on the books:
+
+| Plan | Houses |
+|---|---|
+| `FREE` | 5 |
+| `STARTER` | 25 |
+| `PROFESSIONAL` | 100 |
+| `ENTERPRISE` | unlimited |
+
+A new agency starts on `FREE`. Moving between plans is platform work:
+
+```
+PUT /api/platform/agencies/{id}/plan     (as platform-admin)
+{ "plan": "STARTER" }
+```
+
+Not the agency's own, deliberately. There is no payment behind this yet, so an agency
+able to set its own plan would simply award itself the unlimited tier. An agency admin
+can *see* their plan on `GET /api/agency/profile`, and nothing more.
+
+The cap counts houses **on the books**, not houses advertised. Five properties on the
+free plan whether or not any of them are currently on the marketplace - easier to
+explain to a customer, and there is exactly one moment where it applies.
+
+### A downgrade never removes anything
+
+An agency holding twenty-five houses that moves to the free plan keeps all twenty-five.
+It is simply refused the twenty-sixth until it is back under the cap.
+
+Hiding the excess would take a landlord's advertisement off the market over a billing
+decision they had no part in, and they would have no idea why. Blocking the downgrade
+instead would obstruct a customer at the exact moment they are trying to spend less.
+
+---
+
+## 4. The agency decides how money flows
 
 ```
 PUT /api/agency/settlement-config     (as admin-a, AGENCY_ADMIN only)
@@ -148,7 +185,7 @@ commission could change what every landlord on the books is paid.
 
 ---
 
-## 4. The agent lists a house
+## 5. The agent lists a house
 
 ```
 POST /api/agency/houses               (as agent-a)
@@ -158,6 +195,17 @@ POST /api/agency/houses               (as agent-a)
   "bedrooms": 3, "bathrooms": 2,
   "pricePerMonth": "150000.00", "currency": "XOF" }
 ```
+
+This is where a plan bites. At the ceiling, the answer is:
+
+```
+402  { "code": "SUBSCRIPTION_LIMIT_REACHED",
+       "message": "The FREE plan allows 5 houses and this agency has 5. ..." }
+```
+
+`402 Payment Required` rather than `403`: the agency is entitled to add houses, just not
+this many, and the fix is a bigger plan rather than a different request. The message
+carries both numbers so an agent can act on it instead of ringing support.
 
 The house starts **available but unadvertised**. Nothing appears publicly until the
 agent says so, which is deliberate: a house may be photographed one day and advertised
@@ -181,7 +229,7 @@ Answers `503` until a Cloudinary account is configured, and everything else stil
 
 ---
 
-## 5. Advertising it
+## 6. Advertising it
 
 ```
 POST /api/agency/houses/{id}/publication
@@ -202,7 +250,7 @@ pretending it is occupied.
 
 ---
 
-## 6. Signing a lease
+## 7. Signing a lease
 
 ```
 POST /api/agency/leases               (as agent-a)
@@ -248,7 +296,7 @@ to occupied. Rent has been owed since signing either way.
 
 ---
 
-## 7. Rent is invoiced automatically
+## 8. Rent is invoiced automatically
 
 There is no "create invoice" endpoint. A job derives the whole schedule from the lease's
 terms and raises whatever is missing, about a month ahead. In dev it runs every minute.
@@ -269,7 +317,7 @@ everything past its due date and unpaid - under `/api/agency/invoices/overdue`.
 
 ---
 
-## 8. The renter pays
+## 9. The renter pays
 
 ```
 POST /api/renter/invoices/{id}/payments
@@ -309,7 +357,7 @@ of that possible.
 
 ---
 
-## 9. The landlord is told
+## 10. The landlord is told
 
 An email arrives without anyone sending one:
 
@@ -350,7 +398,7 @@ PATCH /api/me/contact/preferences
 
 ---
 
-## 10. The agency owes the landlord
+## 11. The agency owes the landlord
 
 Under `PLATFORM_COLLECTS`, each settled payment creates a payout:
 
@@ -367,7 +415,7 @@ record that nothing is owed onward.
 
 ---
 
-## 11. When rent does not arrive
+## 12. When rent does not arrive
 
 A sweep notices invoices past their due date and announces each one **once**, however
 often it runs. Both parties hear about it: the renter, who can fix it, and the landlord,
@@ -379,7 +427,7 @@ ever run.
 
 ---
 
-## 12. Ending a lease
+## 13. Ending a lease
 
 ```
 POST /api/agency/leases/{id}/termination
@@ -408,6 +456,8 @@ Worth trying, because refusals are most of the design:
 | An `AGENT` deleting a house | `403` - needs `AGENCY_ADMIN` |
 | An agency admin creating another admin | `403` - only the platform can |
 | An agency admin naming another agency when adding staff | Ignored; the token decides |
+| An agency admin changing their own plan | `403` - platform work, since there is no payment behind it |
+| A sixth house on the free plan | `402`, with how many of how many |
 | `platform-admin` on any agency endpoint | `403` - a real role, but no agency, and a role alone is not enough |
 
 The last is the clearest statement of how this works. Being authenticated says who you
@@ -421,6 +471,7 @@ a user without one sees nothing regardless of their role.
 | Symptom | Usually |
 |---|---|
 | Marketplace is empty | The house is not advertised, or has been let |
+| `402` creating a house | At the plan's ceiling - raise the plan or remove a house |
 | No invoices after signing | `redpanda` is not running, or the generator has not run yet |
 | Landlord got no email | No contact registered, or they muted it |
 | Everything answers `401` | Token expired - fetch a new one |

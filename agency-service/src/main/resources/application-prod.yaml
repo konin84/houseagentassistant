@@ -55,3 +55,7 @@ quarkus:
 app:
   keycloak:
     realm: ${KEYCLOAK_REALM}
+
+kafka:
+  bootstrap:
+    servers: ${KAFKA_BOOTSTRAP_SERVERS}

@@ -29,7 +29,26 @@ quarkus:
     info-title: Agency Service API
     info-version: 1.0.0
 
+# --- Messaging --------------------------------------------------------------
+# Only the outbox relay produces here; nothing publishes directly. property-service
+# consumes this to learn how many houses an agency may hold.
+mp:
+  messaging:
+    outgoing:
+      agency-events:
+        connector: smallrye-kafka
+        topic: agency-events
+        value:
+          serializer: org.apache.kafka.common.serialization.StringSerializer
+        key:
+          serializer: org.apache.kafka.common.serialization.StringSerializer
+        # A plan change acknowledged and then lost would leave an agency paying for a
+        # tier property-service still refuses to honour.
+        acks: all
+
 app:
+  outbox:
+    poll-interval: 2s
   keycloak:
     realm: houseagent
   provisioning:
@@ -56,6 +75,15 @@ app:
     keycloak:
       admin-client:
         enabled: false
+    scheduler:
+      # The relay is driven explicitly in tests, so a stray firing cannot publish
+      # events a test is counting.
+      enabled: false
+  mp:
+    messaging:
+      outgoing:
+        agency-events:
+          connector: smallrye-in-memory
   app:
     provisioning:
       keycloak: false

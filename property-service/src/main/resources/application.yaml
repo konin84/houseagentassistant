@@ -65,6 +65,22 @@ mp:
         auto:
           offset:
             reset: earliest
+      # How many houses an agency may hold. Published by agency-service rather than
+      # asked for, so an agency-service outage cannot stop houses being created.
+      agency-events:
+        connector: smallrye-kafka
+        topic: agency-events
+        value:
+          deserializer: org.apache.kafka.common.serialization.StringDeserializer
+        key:
+          deserializer: org.apache.kafka.common.serialization.StringDeserializer
+        group:
+          id: property-service
+        # A fresh deployment replays every plan from the log rather than assuming
+        # everybody is on the free tier.
+        auto:
+          offset:
+            reset: earliest
 
 # --- Images ----------------------------------------------------------------
 # Cloudinary hosts the bytes; this service stores only the public id. See
@@ -103,6 +119,8 @@ app:
         lease-events:
           # No Docker and no broker, and assertions stay synchronous rather than
           # timing-dependent.
+          connector: smallrye-in-memory
+        agency-events:
           connector: smallrye-in-memory
   app:
     cloudinary:

@@ -1,6 +1,7 @@
 package com.digitalpartner.houseagent.agency.api;
 
 import com.digitalpartner.houseagent.agency.api.dto.AgencyDtos.AgencyResponse;
+import com.digitalpartner.houseagent.agency.api.dto.AgencyDtos.ChangePlanRequest;
 import com.digitalpartner.houseagent.agency.api.dto.AgencyDtos.CreateStaffRequest;
 import com.digitalpartner.houseagent.agency.api.dto.AgencyDtos.ProvisionedResponse;
 import com.digitalpartner.houseagent.agency.api.dto.AgencyDtos.RegisterAgencyRequest;
@@ -13,6 +14,7 @@ import jakarta.validation.Valid;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
+import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
@@ -78,6 +80,22 @@ public class PlatformAgencyResource {
         return Response.status(Response.Status.CREATED)
                 .entity(ProvisionedResponse.from(provisioned))
                 .build();
+    }
+
+    /**
+     * Moves an agency to a different subscription plan.
+     *
+     * <p>A downgrade never removes anything. An agency holding twenty-five houses that
+     * moves to the free five keeps all twenty-five and is refused the twenty-sixth -
+     * because hiding the excess would pull a landlord's advertisement off the market
+     * over a billing decision they had no part in.
+     */
+    @PUT
+    @Path("/{agencyId}/plan")
+    @Consumes(MediaType.APPLICATION_JSON)
+    public AgencyResponse changePlan(@PathParam("agencyId") String agencyId,
+                                     @Valid ChangePlanRequest request) {
+        return AgencyResponse.from(agencies.changePlan(agencyId, request.plan()));
     }
 
     /** Stops an agency operating without deleting anything it is responsible for. */

@@ -142,6 +142,7 @@ claim - so it gets `403` from both the agency and the personal endpoints. If you
 | `403` | Authenticated, but the wrong role - or the right role without the claim | Do not retry. Hide the control that produced it |
 | `404` | Not found **or** belongs to another agency | Treat as not found. Do not say "no permission" |
 | `409` | The request was valid but the world moved | Re-read and show the user what changed |
+| `402` | The agency is at its subscription ceiling | Offer the upgrade path; the message says how many of how many |
 | `503` | An integration is unconfigured, currently only image uploads | Hide the upload UI rather than showing an error |
 
 The `404`-for-someone-else's-data is deliberate throughout. A `403` would confirm that a
@@ -261,6 +262,12 @@ configured. Hide the upload control rather than surfacing it.
 
 ## Things that will surprise you
 
+**Creating a house can answer 402.** Every agency is on a plan capping how many houses
+it may hold - five on the free tier. `GET /api/agency/profile` returns `plan` and
+`maxHouses`, so a UI can show "3 of 5 used" and disable the add button before somebody
+hits the wall rather than after. `maxHouses` is `null` for the unlimited plan, which is
+a case to handle rather than render as "null".
+
 **A house disappears from the marketplace when it is let.** `GET
 /api/marketplace/listings/{id}` starts returning `404` because the listing projection
 only contains houses that are both available and published. Handle it as "no longer
@@ -287,7 +294,7 @@ render that as an error or hide the row.
 
 ## Getting started quickly
 
-The Postman collection in `postman/` documents all 57 endpoints with request bodies and
+The Postman collection in `postman/` documents all 58 endpoints with request bodies and
 notes on what each one refuses. Import it with `gateway.postman_environment.json` and
 click through a flow before writing any code - it is faster than reading this file, and
 the folder descriptions explain the reasoning behind each rule.

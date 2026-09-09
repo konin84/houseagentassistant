@@ -62,7 +62,7 @@ no agency rather than falling back to a default.
 | `lease-service` | 8082 | **Complete** | Leases, payment modality, availability transitions |
 | `payment-service` | 8083 | **Complete** | Invoices, payments, commission, landlord payouts |
 | `notification-service` | 8084 | **Complete** | Contact details, email delivery and retry |
-| `agency-service` | 8085 | **Complete** | Agencies, their staff, and onboarding landlords and renters |
+| `agency-service` | 8085 | **Complete** | Agencies, subscription plans, staff, and onboarding landlords and renters |
 
 All five validate bearer JWTs from the Keycloak realm in `infra/keycloak/`.
 `agency-service` is also the one that *creates* the accounts, through Keycloak's
@@ -155,7 +155,7 @@ would actually deploy.
 
 ### Trying the API
 
-`postman/houseagentassistant.postman_collection.json` covers all 57 endpoints. Import it
+`postman/houseagentassistant.postman_collection.json` covers all 58 endpoints. Import it
 with one of the two environments - the collection is identical either way, only the base
 URLs differ:
 

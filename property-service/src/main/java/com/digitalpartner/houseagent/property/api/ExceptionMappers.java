@@ -4,6 +4,7 @@ import com.digitalpartner.houseagent.common.api.ApiError;
 import com.digitalpartner.houseagent.property.images.ForeignAssetException;
 import com.digitalpartner.houseagent.property.images.ImageNotFoundException;
 import com.digitalpartner.houseagent.property.images.ImagesNotConfiguredException;
+import com.digitalpartner.houseagent.property.subscription.SubscriptionLimitReachedException;
 import com.digitalpartner.houseagent.property.service.HouseNotFoundException;
 import com.digitalpartner.houseagent.property.service.IllegalHouseStateException;
 import jakarta.validation.ConstraintViolation;
@@ -62,6 +63,19 @@ public class ExceptionMappers {
     public Response imagesNotConfigured(ImagesNotConfiguredException e) {
         return Response.status(Response.Status.SERVICE_UNAVAILABLE)
                 .entity(ApiError.of("IMAGES_NOT_CONFIGURED", e.getMessage()))
+                .build();
+    }
+
+    /**
+     * 402 Payment Required, which is exactly what this is and almost the only correct
+     * use of the code. Not 403: the caller is entitled to add houses, just not this
+     * many. Not 409: nothing is in conflict. A client can tell from the code alone that
+     * the answer is a bigger plan rather than a different request.
+     */
+    @ServerExceptionMapper
+    public Response subscriptionLimitReached(SubscriptionLimitReachedException e) {
+        return Response.status(Response.Status.PAYMENT_REQUIRED)
+                .entity(ApiError.of("SUBSCRIPTION_LIMIT_REACHED", e.getMessage()))
                 .build();
     }
 

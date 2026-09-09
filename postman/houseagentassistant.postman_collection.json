@@ -723,7 +723,7 @@
                     "houses"
                   ]
                 },
-                "description": "Starts AVAILABLE and unpublished. Saves the new id into {{houseId}}, which the rest of this collection uses.",
+                "description": "Starts AVAILABLE and unpublished. Saves the new id into {{houseId}}, which the rest of this collection uses.\n\nAnswers **402 SUBSCRIPTION_LIMIT_REACHED** once the agency is at the ceiling its plan allows - five houses on the free plan. The message says how many of how many, so it is actionable rather than a bare refusal. Raise it from the platform folder.",
                 "body": {
                   "mode": "raw",
                   "raw": "{\n  \"landlordId\": \"{{landlordId}}\",\n  \"title\": \"Villa Cocody\",\n  \"description\": \"Bright three-bedroom villa with a courtyard.\",\n  \"address\": {\n    \"street\": \"Rue des Jardins\",\n    \"district\": \"Cocody\",\n    \"city\": \"Abidjan\",\n    \"countryCode\": \"CI\"\n  },\n  \"bedrooms\": 3,\n  \"bathrooms\": 2,\n  \"sizeSqm\": 180,\n  \"pricePerMonth\": \"150000.00\",\n  \"currency\": \"XOF\"\n}",
@@ -2554,6 +2554,46 @@
                 "body": {
                   "mode": "raw",
                   "raw": "{\n  \"email\": \"admin@cocody-lettings.ci\",\n  \"firstName\": \"Akissi\",\n  \"lastName\": \"Admin\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Change the plan",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "PLATFORM_ADMIN",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{agencyUrl}}/api/platform/agencies/{{newAgencyId}}/plan",
+                  "host": [
+                    "{{agencyUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "platform",
+                    "agencies",
+                    "{{newAgencyId}}",
+                    "plan"
+                  ]
+                },
+                "description": "FREE (5 houses), STARTER (25), PROFESSIONAL (100) or ENTERPRISE (unlimited).\n\nPlatform-admin only. Without payment behind it an agency able to set its own plan would simply award itself the unlimited tier, so the decision sits with whoever does the billing until there is billing to do it.\n\nA downgrade never removes anything. An agency holding twenty-five houses that moves to the free five keeps all twenty-five and is refused the twenty-sixth - hiding the excess would pull a landlord's advertisement off the market over a decision they had no part in.\n\nproperty-service learns of this through an event, so the new limit applies a moment later rather than instantly. It needs the broker running.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"plan\": \"STARTER\"\n}",
                   "options": {
                     "raw": {
                       "language": "json"

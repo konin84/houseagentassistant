@@ -229,7 +229,11 @@ houses = folder(
     [
         req("Create house", "POST", url(PROP, ["api", "agency", "houses"]),
             "Starts AVAILABLE and unpublished. Saves the new id into {{houseId}}, which "
-            "the rest of this collection uses.",
+            "the rest of this collection uses.\n\n"
+            "Answers **402 SUBSCRIPTION_LIMIT_REACHED** once the agency is at the "
+            "ceiling its plan allows - five houses on the free plan. The message says "
+            "how many of how many, so it is actionable rather than a bare refusal. "
+            "Raise it from the platform folder.",
             role=AGENT, capture=("houseId", "body.id"),
             body={
                 "landlordId": "{{landlordId}}",
@@ -581,6 +585,21 @@ platform = folder(
             role=PLATFORM, agency=False,
             body={"email": "admin@cocody-lettings.ci",
                   "firstName": "Akissi", "lastName": "Admin"}),
+        req("Change the plan", "PUT",
+            url(AGENCY_URL, ["api", "platform", "agencies", "{{newAgencyId}}", "plan"]),
+            "FREE (5 houses), STARTER (25), PROFESSIONAL (100) or ENTERPRISE "
+            "(unlimited).\n\n"
+            "Platform-admin only. Without payment behind it an agency able to set its "
+            "own plan would simply award itself the unlimited tier, so the decision "
+            "sits with whoever does the billing until there is billing to do it.\n\n"
+            "A downgrade never removes anything. An agency holding twenty-five houses "
+            "that moves to the free five keeps all twenty-five and is refused the "
+            "twenty-sixth - hiding the excess would pull a landlord's advertisement "
+            "off the market over a decision they had no part in.\n\n"
+            "property-service learns of this through an event, so the new limit applies "
+            "a moment later rather than instantly. It needs the broker running.",
+            role=PLATFORM, agency=False,
+            body={"plan": "STARTER"}),
         req("Suspend an agency", "POST",
             url(AGENCY_URL, ["api", "platform", "agencies", "{{newAgencyId}}",
                              "suspension"]),

@@ -8,6 +8,7 @@ import com.digitalpartner.houseagent.property.domain.Address;
 import com.digitalpartner.houseagent.property.domain.AvailabilityStatus;
 import com.digitalpartner.houseagent.property.domain.House;
 import com.digitalpartner.houseagent.property.images.CloudinaryUrls;
+import com.digitalpartner.houseagent.property.subscription.SubscriptionLimit;
 import io.quarkus.panache.common.Page;
 import io.quarkus.panache.common.Sort;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -40,8 +41,17 @@ public class HouseService {
     @Inject
     CloudinaryUrls urls;
 
+    @Inject
+    SubscriptionLimit subscription;
+
+    @Inject
+    com.digitalpartner.houseagent.property.security.CallerContext caller;
+
     @Transactional
     public HouseResponse create(CreateHouseRequest request) {
+        // Before anything is written, so a refused attempt leaves nothing behind.
+        subscription.requireRoomForAnotherHouse(caller.requireAgencyId());
+
         House house = new House();
         house.landlordId = request.landlordId();
         house.title = request.title();

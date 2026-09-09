@@ -57,6 +57,20 @@ public class Agency extends PanacheEntityBase {
     @Column(name = "status", nullable = false, length = 20)
     public AgencyStatus status = AgencyStatus.ACTIVE;
 
+    /**
+     * What they are entitled to.
+     *
+     * <p>Only the plan is stored, never the ceiling it implies. A copy of the number on
+     * every agency row would turn "raise the free tier from five to ten" into an UPDATE
+     * across every customer rather than a one-line change.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "plan", nullable = false, length = 32)
+    public SubscriptionPlan plan = SubscriptionPlan.FREE;
+
+    @Column(name = "plan_changed_at", nullable = false)
+    public Instant planChangedAt = Instant.now();
+
     @Column(name = "created_at", nullable = false, updatable = false)
     public Instant createdAt = Instant.now();
 

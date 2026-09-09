@@ -2,10 +2,12 @@ package com.digitalpartner.houseagent.agency.api.dto;
 
 import com.digitalpartner.houseagent.agency.domain.Agency;
 import com.digitalpartner.houseagent.agency.domain.AgencyStatus;
+import com.digitalpartner.houseagent.agency.domain.SubscriptionPlan;
 import com.digitalpartner.houseagent.agency.identity.PlatformUser;
 import com.digitalpartner.houseagent.agency.service.StaffDirectory.Provisioned;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
@@ -28,6 +30,13 @@ public final class AgencyDtos {
             String countryCode,
             @Email @Size(max = 320) String contactEmail,
             @Size(max = 40) String contactPhone) {
+    }
+
+    /**
+     * Platform-admin only. Without payment behind it, an agency able to set its own
+     * plan could award itself the unlimited tier.
+     */
+    public record ChangePlanRequest(@NotNull SubscriptionPlan plan) {
     }
 
     public record UpdateAgencyRequest(
@@ -58,6 +67,11 @@ public final class AgencyDtos {
 
     // --------------------------------------------------------------- responses
 
+    /**
+     * @param maxHouses the ceiling this plan allows, or null for unlimited. Derived
+     *                  from the plan rather than stored, so raising a tier is a one-line
+     *                  change instead of an UPDATE across every customer.
+     */
     public record AgencyResponse(
             String agencyId,
             String name,
@@ -66,12 +80,16 @@ public final class AgencyDtos {
             String contactEmail,
             String contactPhone,
             AgencyStatus status,
+            SubscriptionPlan plan,
+            Integer maxHouses,
+            Instant planChangedAt,
             Instant createdAt) {
 
         public static AgencyResponse from(Agency agency) {
             return new AgencyResponse(
                     agency.agencyId, agency.name, agency.city, agency.countryCode,
                     agency.contactEmail, agency.contactPhone, agency.status,
+                    agency.plan, agency.plan.maxHouses(), agency.planChangedAt,
                     agency.createdAt);
         }
     }

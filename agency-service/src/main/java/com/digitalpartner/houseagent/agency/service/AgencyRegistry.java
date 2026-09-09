@@ -2,6 +2,9 @@ package com.digitalpartner.houseagent.agency.service;
 
 import com.digitalpartner.houseagent.agency.domain.Agency;
 import com.digitalpartner.houseagent.agency.domain.AgencyStatus;
+import com.digitalpartner.houseagent.agency.domain.SubscriptionPlan;
+import com.digitalpartner.houseagent.agency.outbox.OutboxWriter;
+import com.digitalpartner.houseagent.common.events.AgencyEvents;
 import com.digitalpartner.houseagent.agency.identity.NewUser;
 import com.digitalpartner.houseagent.agency.identity.PlatformUser;
 import com.digitalpartner.houseagent.agency.identity.UserDirectory;
@@ -40,6 +43,9 @@ public class AgencyRegistry {
     @Inject
     TemporaryPasswords passwords;
 
+    @Inject
+    OutboxWriter outbox;
+
     @Transactional
     public Agency register(String agencyId, String name, String city, String countryCode,
                            String contactEmail, String contactPhone) {
@@ -55,9 +61,17 @@ public class AgencyRegistry {
         agency.contactEmail = contactEmail;
         agency.contactPhone = contactPhone;
         agency.status = AgencyStatus.ACTIVE;
+        // Everybody starts free. An agency that has never been given a plan is not a
+        // special case to handle later; it is simply on the free one.
+        agency.plan = SubscriptionPlan.FREE;
+        agency.planChangedAt = Instant.now();
         agency.persist();
 
-        LOG.infof("Registered agency %s (%s)", agencyId, name);
+        // Announced at creation as well as on change, so property-service never has to
+        // guess what a brand new agency is allowed.
+        announcePlan(agency);
+
+        LOG.infof("Registered agency %s (%s) on %s", agencyId, name, agency.plan);
         return agency;
     }
 
@@ -85,6 +99,50 @@ public class AgencyRegistry {
 
         LOG.infof("Agency %s given its first admin, %s", agencyId, email);
         return new Provisioned(created, temporary, false);
+    }
+
+    /**
+     * Moves an agency to a different plan.
+     *
+     * <p>Platform work, not the agency's own. Without payment behind it, an agency
+     * admin able to call this could award themselves the unlimited tier - so the
+     * decision sits with whoever is doing the billing until there is billing to do it.
+     *
+     * <p>Note what does <em>not</em> happen on a downgrade: nothing. An agency holding
+     * twenty-five houses that moves to the free five keeps all twenty-five, and is
+     * simply refused the twenty-sixth. Hiding the excess would take a landlord's
+     * advertisement off the market over a decision their agency made about billing, and
+     * they never agreed to anything.
+     */
+    @Transactional
+    public Agency changePlan(String agencyId, SubscriptionPlan plan) {
+        Agency agency = require(agencyId);
+        SubscriptionPlan previous = agency.plan;
+
+        agency.plan = plan;
+        agency.planChangedAt = Instant.now();
+        agency.updatedAt = Instant.now();
+
+        announcePlan(agency);
+
+        LOG.infof("Agency %s moved from %s to %s", agencyId, previous, plan);
+        return agency;
+    }
+
+    /**
+     * Writes the plan to the outbox, inside the caller's transaction.
+     *
+     * <p>The ceiling is resolved here rather than left to the consumer. property-service
+     * enforces the limit but has no business knowing what a STARTER plan is worth -
+     * that is a commercial fact, and one that should change in one place.
+     */
+    private void announcePlan(Agency agency) {
+        outbox.record("agency", agency.agencyId, agency.agencyId, "AgencyPlanChanged",
+                new AgencyEvents.AgencyPlanChanged(
+                        agency.agencyId,
+                        agency.plan.name(),
+                        agency.plan.maxHouses(),
+                        Instant.now()));
     }
 
     @Transactional
