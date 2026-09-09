@@ -102,6 +102,24 @@ http:
       entryPoints: [web]
       middlewares: [dev-cors]
 
+    # --- agency-service -----------------------------------------------------
+    # A fourth slice of /api/agency. The prefix was never one service's to own.
+    agency-admin:
+      rule: >-
+        PathPrefix(`/api/agency/profile`)
+        || PathPrefix(`/api/agency/staff`)
+        || PathPrefix(`/api/agency/landlords`)
+        || PathPrefix(`/api/agency/renters`)
+      service: agency
+      entryPoints: [web]
+      middlewares: [dev-cors]
+
+    agency-platform:
+      rule: "PathPrefix(`/api/platform`)"
+      service: agency
+      entryPoints: [web]
+      middlewares: [dev-cors]
+
     # --- notification-service -----------------------------------------------
     notification-contacts:
       rule: "PathPrefix(`/api/me/contact`) || PathPrefix(`/api/contacts`)"
@@ -129,6 +147,10 @@ http:
       loadBalancer:
         servers:
           - url: "http://host.docker.internal:8084"
+    agency:
+      loadBalancer:
+        servers:
+          - url: "http://host.docker.internal:8085"
 
 # ============================================================================
 #  Deliberately not routed

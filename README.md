@@ -62,8 +62,11 @@ no agency rather than falling back to a default.
 | `lease-service` | 8082 | **Complete** | Leases, payment modality, availability transitions |
 | `payment-service` | 8083 | **Complete** | Invoices, payments, commission, landlord payouts |
 | `notification-service` | 8084 | **Complete** | Contact details, email delivery and retry |
+| `agency-service` | 8085 | **Complete** | Agencies, their staff, and onboarding landlords and renters |
 
-All four validate bearer JWTs from the Keycloak realm in `infra/keycloak/`.
+All five validate bearer JWTs from the Keycloak realm in `infra/keycloak/`.
+`agency-service` is also the one that *creates* the accounts, through Keycloak's
+admin API - see [Who creates whom](#who-creates-whom).
 
 Landlords deliberately have no service of their own: a landlord is a Keycloak
 principal, their link to houses lives in `property-service`, what they are owed lives
@@ -90,6 +93,7 @@ cp .env property-service/.env              # Quarkus reads .env per module
 cp .env lease-service/.env
 cp .env payment-service/.env
 cp .env notification-service/.env
+cp .env agency-service/.env
 ```
 
 Create the databases. Each service owns its own, which is what makes them
@@ -104,6 +108,8 @@ CREATE DATABASE houseagent_payment;
 CREATE DATABASE houseagent_payment_test;
 CREATE DATABASE houseagent_notification;
 CREATE DATABASE houseagent_notification_test;
+CREATE DATABASE houseagent_agency;
+CREATE DATABASE houseagent_agency_test;
 ```
 
 The lease schema needs the `btree_gist` extension for its exclusion constraint. The
@@ -149,13 +155,13 @@ would actually deploy.
 
 ### Trying the API
 
-`postman/houseagentassistant.postman_collection.json` covers all 44 endpoints. Import it
+`postman/houseagentassistant.postman_collection.json` covers all 57 endpoints. Import it
 with one of the two environments - the collection is identical either way, only the base
 URLs differ:
 
 | Environment | Talks to |
 |---|---|
-| `local-dev.postman_environment.json` | the four service ports directly |
+| `local-dev.postman_environment.json` | the five service ports directly |
 | `gateway.postman_environment.json` | `localhost:8000`, through the gateway |
 
 Run one request from the **Authentication** folder to get a token, then work down a
@@ -192,7 +198,7 @@ cd lease-service && ../mvnw quarkus:dev -Ddebug=5006
 
 | | |
 |---|---|
-| Services | 8081 property, 8082 lease, 8083 payment, 8084 notification |
+| Services | 8081 property, 8082 lease, 8083 payment, 8084 notification, 8085 agency |
 | Gateway | http://localhost:8000, dashboard on http://localhost:8001 |
 | Keycloak | http://localhost:8180 (`admin` / `admin`) |
 | Swagger UI | http://localhost:8081/q/swagger-ui |
@@ -503,7 +509,7 @@ nothing about deployed behaviour changes.
 docker compose up -d gateway     # http://localhost:8000, dashboard on :8001
 ```
 
-One origin in front of all four services, so a browser frontend has a single host to
+One origin in front of all five services, so a browser frontend has a single host to
 talk to and CORS is configured once instead of four times.
 
 It is **configuration, not a service anybody wrote**. Coming from Spring you would reach

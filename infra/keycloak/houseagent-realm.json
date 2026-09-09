@@ -35,6 +35,36 @@
       }
     ]
   },
+  "groups": [
+    {
+      "name": "AGENCY_ADMIN",
+      "path": "/AGENCY_ADMIN",
+      "realmRoles": [
+        "AGENCY_ADMIN"
+      ]
+    },
+    {
+      "name": "AGENT",
+      "path": "/AGENT",
+      "realmRoles": [
+        "AGENT"
+      ]
+    },
+    {
+      "name": "LANDLORD",
+      "path": "/LANDLORD",
+      "realmRoles": [
+        "LANDLORD"
+      ]
+    },
+    {
+      "name": "RENTER",
+      "path": "/RENTER",
+      "realmRoles": [
+        "RENTER"
+      ]
+    }
+  ],
   "clients": [
     {
       "clientId": "houseagent-backend",
@@ -141,6 +171,20 @@
           }
         }
       ]
+    },
+    {
+      "clientId": "houseagent-admin",
+      "name": "houseagentassistant provisioning",
+      "description": "agency-service uses this to create users. Nobody logs in with it - it has only a service account.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "houseagent-admin-dev-secret",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "fullScopeAllowed": true
     }
   ],
   "users": [
@@ -278,6 +322,18 @@
         "PLATFORM_ADMIN"
       ],
       "attributes": {}
+    },
+    {
+      "username": "service-account-houseagent-admin",
+      "enabled": true,
+      "serviceAccountClientId": "houseagent-admin",
+      "clientRoles": {
+        "realm-management": [
+          "manage-users",
+          "view-users",
+          "query-users"
+        ]
+      }
     }
   ],
   "components": {

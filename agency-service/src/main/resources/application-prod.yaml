@@ -1,0 +1,57 @@
+# ============================================================================
+#  agency-service - production
+# ============================================================================
+#  This service can create accounts, so its own credentials matter more than most.
+#  Nothing here has a fallback.
+# ============================================================================
+
+quarkus:
+  http:
+    port: ${HTTP_PORT:8085}
+
+  datasource:
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    jdbc:
+      url: ${DB_URL}
+      max-size: ${DB_POOL_MAX_SIZE:20}
+
+  flyway:
+    migrate-at-start: true
+
+  oidc:
+    enabled: true
+    auth-server-url: ${OIDC_AUTH_SERVER_URL}
+    client-id: ${OIDC_CLIENT_ID}
+    credentials:
+      secret: ${OIDC_CLIENT_SECRET}
+    application-type: service
+
+  keycloak:
+    admin-client:
+      enabled: true
+      server-url: ${KEYCLOAK_URL}
+      realm: ${KEYCLOAK_REALM}
+      client-id: ${KEYCLOAK_ADMIN_CLIENT_ID}
+      # Grants the power to create users. It should be scoped to manage-users,
+      # view-users and query-users and nothing further, so that losing it cannot
+      # grant anybody a privilege the platform does not already hand out.
+      client-secret: ${KEYCLOAK_ADMIN_CLIENT_SECRET}
+      grant-type: CLIENT_CREDENTIALS
+
+  hibernate-orm:
+    log:
+      sql: false
+
+  log:
+    level: INFO
+    category:
+      "com.digitalpartner.houseagent":
+        level: ${APP_LOG_LEVEL:INFO}
+
+  swagger-ui:
+    always-include: false
+
+app:
+  keycloak:
+    realm: ${KEYCLOAK_REALM}

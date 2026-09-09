@@ -1,0 +1,61 @@
+# ============================================================================
+#  agency-service - shared configuration
+# ============================================================================
+#  Owns agencies and provisions the people in them. The accounts themselves live
+#  in Keycloak; this service decides who may create whom, and under which agency.
+# ============================================================================
+
+quarkus:
+  application:
+    name: agency-service
+
+  datasource:
+    db-kind: postgresql
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
+
+  hibernate-orm:
+    schema-management:
+      strategy: validate
+    # No multitenant setting, unlike the other agency-facing services. This one owns
+    # the table of tenants, and filtering that by the current tenant would leave a
+    # platform admin unable to see the thing they administer.
+
+  flyway:
+    migrate-at-start: true
+    baseline-on-migrate: true
+
+  smallrye-openapi:
+    info-title: Agency Service API
+    info-version: 1.0.0
+
+app:
+  keycloak:
+    realm: houseagent
+  provisioning:
+    # Binds the Keycloak-backed UserDirectory. Off in tests, which use an in-memory
+    # one - the rules worth testing here are about who may create whom, and none of
+    # them are Keycloak's behaviour.
+    keycloak: true
+
+# ============================================================================
+#  Test
+# ============================================================================
+"%test":
+  quarkus:
+    datasource:
+      jdbc:
+        url: jdbc:postgresql://localhost:5432/houseagent_agency_test
+    flyway:
+      clean-at-start: true
+      clean-disabled: false
+    oidc:
+      discovery-enabled: false
+      auth-server-url: http://localhost:8180/realms/houseagent
+      jwks-path: protocol/openid-connect/certs
+    keycloak:
+      admin-client:
+        enabled: false
+  app:
+    provisioning:
+      keycloak: false

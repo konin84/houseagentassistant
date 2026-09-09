@@ -16,6 +16,12 @@ CLIENT_SECRET = "houseagent-dev-secret"
 
 WEB_CLIENT_ID = "houseagent-web"
 
+# agency-service provisions users through Keycloak's admin API, and needs an identity
+# of its own to do it. A service account rather than a human's token: provisioning
+# happens on behalf of the platform, not on behalf of whoever is logged in.
+ADMIN_CLIENT_ID = "houseagent-admin"
+ADMIN_CLIENT_SECRET = "houseagent-admin-dev-secret"
+
 # Where the frontend dev server runs. Add to these rather than loosening them:
 # Keycloak matches redirect URIs exactly, and a wildcard host would let any site
 # start a login and receive the resulting code.
@@ -175,6 +181,23 @@ realm = {
     # and carries on - and the client silently loses the built-in roles scope, so every
     # token comes back without realm_access.roles and every @RolesAllowed fails. Leaving
     # defaultClientScopes unset lets Keycloak attach its own defaults once they exist.
+    # ========================================================================
+    #  One group per role, and provisioning assigns groups rather than roles
+    # ========================================================================
+    #  Assigning a realm role through the admin API requires *reading* the role
+    #  first, to resolve its id - and reading roles needs view-realm, which is a
+    #  composite that carries view-clients, which can read client secrets. That is
+    #  a large privilege for a service whose whole job is creating people.
+    #
+    #  Adding somebody to a group needs only manage-users. So each role gets a
+    #  group that carries it, and agency-service moves users into groups. The
+    #  service account stays unable to read a single client secret.
+    # ========================================================================
+    "groups": [
+        {"name": role, "path": "/" + role, "realmRoles": [role]}
+        for role in ["AGENCY_ADMIN", "AGENT", "LANDLORD", "RENTER"]
+    ],
+
     "clients": [
         {
             "clientId": CLIENT_ID,
@@ -238,6 +261,22 @@ realm = {
             # rather than in a shared scope - see the note above the clients list.
             "protocolMappers": [attribute_mapper("agency_id"), attribute_mapper("party_id")],
         },
+        {
+            "clientId": ADMIN_CLIENT_ID,
+            "name": "houseagentassistant provisioning",
+            "description": ("agency-service uses this to create users. Nobody logs in "
+                            "with it - it has only a service account."),
+            "enabled": True,
+            "protocol": "openid-connect",
+            "publicClient": False,
+            "secret": ADMIN_CLIENT_SECRET,
+            "serviceAccountsEnabled": True,
+            # No human flow of any kind. This client exists to be one machine.
+            "standardFlowEnabled": False,
+            "implicitFlowEnabled": False,
+            "directAccessGrantsEnabled": False,
+            "fullScopeAllowed": True,
+        },
     ],
 
     "users": [
@@ -255,6 +294,20 @@ realm = {
              first="Ama", last="Kouassi", email="renter@example.ci"),
         user("platform-admin", ["PLATFORM_ADMIN"],
              first="Platform", last="Admin"),
+        {
+            # The service account behind houseagent-admin. Naming it
+            # service-account-<clientId> is how a realm import attaches roles to one.
+            #
+            # Three roles, not realm-admin: this may create and read users and nothing
+            # else. It cannot touch clients, roles or the realm itself, so a leaked
+            # secret cannot grant anybody a role they were not already given.
+            "username": "service-account-" + ADMIN_CLIENT_ID,
+            "enabled": True,
+            "serviceAccountClientId": ADMIN_CLIENT_ID,
+            "clientRoles": {
+                "realm-management": ["manage-users", "view-users", "query-users"]
+            },
+        },
     ],
 
     "components": {

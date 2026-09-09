@@ -18,7 +18,7 @@ Locally, with `docker compose up -d gateway keycloak` and the services running:
 
 **Use the gateway, not the service ports.** One origin means CORS is configured once,
 and it is the only address that stays true when the services move. The individual ports
-(8081-8084) exist for backend debugging and will not be reachable in a deployment.
+(8081-8085) exist for backend debugging and will not be reachable in a deployment.
 
 ---
 
@@ -83,6 +83,31 @@ All six share the password `password`.
 | `landlord-one` | LANDLORD | their own portfolio and earnings |
 | `renter-one` | RENTER | their own invoices, and can pay them |
 | `platform-admin` | PLATFORM_ADMIN | deliberately nothing - see below |
+
+### Where accounts come from
+
+Nobody self-registers, and the frontend has no sign-up screen to build. Every account is
+created by somebody one level out:
+
+| Creating | Done by | Endpoint |
+|---|---|---|
+| An agency and its first admin | `PLATFORM_ADMIN` | `POST /api/platform/agencies` |
+| An agent | `AGENCY_ADMIN` | `POST /api/agency/staff` |
+| A landlord or renter | `AGENCY_ADMIN` | `POST /api/agency/landlords`, `/renters` |
+
+Two things about that matter for the UI.
+
+**Onboarding returns a `partyId`**, and that is what you then send as `landlordId` when
+creating a house or `renterId` when signing a lease. There is nowhere else to get one.
+
+**Onboarding an existing person answers `200`, not `201`,** with `linked: true` and no
+password. That is success, not a conflict - a landlord who already works with another
+agency is one person with one portfolio. Show "linked to an existing account" rather
+than an error.
+
+New accounts return a **one-time temporary password** in the response. It is shown once,
+and the account cannot be used until the person sets their own - so a UI should display
+it clearly enough to be written down, and warn that it will not be shown again.
 
 ---
 
@@ -262,7 +287,7 @@ render that as an error or hide the row.
 
 ## Getting started quickly
 
-The Postman collection in `postman/` documents all 44 endpoints with request bodies and
+The Postman collection in `postman/` documents all 57 endpoints with request bodies and
 notes on what each one refuses. Import it with `gateway.postman_environment.json` and
 click through a flow before writing any code - it is faster than reading this file, and
 the folder descriptions explain the reasoning behind each rule.
@@ -274,5 +299,5 @@ http://localhost:8081/q/openapi     # OpenAPI 3 document
 http://localhost:8081/q/swagger-ui  # browsable, dev only
 ```
 
-One per service - 8081 property, 8082 lease, 8083 payment, 8084 notification. These are
-the only time you should use the direct ports.
+One per service - 8081 property, 8082 lease, 8083 payment, 8084 notification, 8085
+agency. These are the only time you should use the direct ports.

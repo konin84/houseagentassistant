@@ -20,9 +20,29 @@ that a screen will eventually make.
 | **Landlord** | `LANDLORD` | their own properties' tenancies and earnings, across every agency they use |
 | **Renter** | `RENTER` | their own invoices, and can pay them |
 | **Anyone** | none | the public marketplace |
+| **Platform admin** | `PLATFORM_ADMIN` | creates agencies; deliberately sees no agency's data |
 
 An agent belongs to exactly one agency. Landlords and renters belong to none: a landlord
 may place one house with agency A and another with agency B, and sees both in one list.
+
+### Who creates whom
+
+Nobody signs themselves up. Every account is created by somebody one level out:
+
+| Creates | Who does it |
+|---|---|
+| An agency, and its first admin | `PLATFORM_ADMIN` |
+| Agents, landlords, renters | `AGENCY_ADMIN` of that agency |
+
+An agency admin **cannot create another agency admin** - a role able to grant itself is
+not a boundary, since one compromised account becomes as many as an attacker likes. A
+second admin comes from the platform.
+
+And an agency admin cannot create staff anywhere but their own agency. There is no field
+for it: the agency comes from their token. That matters more than it sounds, because the
+`agency_id` stamped on a new account is the value every other service filters its data
+by - an admin who could choose it could place an employee inside a competitor and read
+everything they have.
 
 ---
 
@@ -40,6 +60,7 @@ cd property-service     && ../mvnw quarkus:dev
 cd lease-service        && ../mvnw quarkus:dev -Ddebug=5006
 cd payment-service      && ../mvnw quarkus:dev -Ddebug=5007
 cd notification-service && ../mvnw quarkus:dev -Ddebug=5008
+cd agency-service       && ../mvnw quarkus:dev -Ddebug=5009
 ```
 
 Import the Postman collection with the **gateway** environment, and run
@@ -51,7 +72,47 @@ marketplace and no invoice is ever raised.
 
 ---
 
-## 1. The landlord says where to reach them
+## 1. The agency gets its people
+
+Before anyone can list a house, the agency needs staff, and a landlord to list it for.
+
+```
+POST /api/platform/agencies                      (as platform-admin)
+POST /api/platform/agencies/{id}/administrators   -> the first AGENCY_ADMIN
+
+POST /api/agency/staff       (as that admin)      -> an AGENT
+POST /api/agency/landlords                        -> returns a partyId
+POST /api/agency/renters                          -> returns a partyId
+```
+
+Those two `partyId` values are what you use as `landlordId` when listing a house and
+`renterId` when signing a lease. Before this existed you had to invent UUIDs.
+
+New accounts get a **one-time password**, returned once and never again. It is
+temporary: logging in with it answers *"Account is not fully set up"* until the person
+chooses their own, so a credential an administrator has seen stops working the moment
+the real person uses it.
+
+### Onboarding somebody who already exists
+
+Onboard a landlord whose email is already on the platform and you get `200` rather than
+`201`, `linked: true`, and no password - because they already have one.
+
+That is the whole point. A landlord placing houses with two agencies is **one person**:
+one account, one `party_id`, one portfolio spanning both. A second account would split
+their leases and earnings in half, and nothing would fail - it would simply look to them
+as though half their properties had vanished.
+
+The same account can be a landlord *and* a renter, which is ordinary: renting a flat in
+town while letting out a house you inherited. One account, two roles.
+
+Agency staff cannot be adopted this way. Onboarding an address that belongs to another
+agency's employee is refused - otherwise an agency could add roles to a competitor's
+staff using nothing but a guessed work address.
+
+---
+
+## 2. The landlord says where to reach them
 
 ```
 PUT /api/me/contact          (as landlord-one)
@@ -65,7 +126,7 @@ a landlord's behalf when taking them on, with `PUT /api/contacts/{partyId}`.
 
 ---
 
-## 2. The agency decides how money flows
+## 3. The agency decides how money flows
 
 ```
 PUT /api/agency/settlement-config     (as admin-a, AGENCY_ADMIN only)
@@ -87,7 +148,7 @@ commission could change what every landlord on the books is paid.
 
 ---
 
-## 3. The agent lists a house
+## 4. The agent lists a house
 
 ```
 POST /api/agency/houses               (as agent-a)
@@ -120,7 +181,7 @@ Answers `503` until a Cloudinary account is configured, and everything else stil
 
 ---
 
-## 4. Advertising it
+## 5. Advertising it
 
 ```
 POST /api/agency/houses/{id}/publication
@@ -141,7 +202,7 @@ pretending it is occupied.
 
 ---
 
-## 5. Signing a lease
+## 6. Signing a lease
 
 ```
 POST /api/agency/leases               (as agent-a)
@@ -187,7 +248,7 @@ to occupied. Rent has been owed since signing either way.
 
 ---
 
-## 6. Rent is invoiced automatically
+## 7. Rent is invoiced automatically
 
 There is no "create invoice" endpoint. A job derives the whole schedule from the lease's
 terms and raises whatever is missing, about a month ahead. In dev it runs every minute.
@@ -208,7 +269,7 @@ everything past its due date and unpaid - under `/api/agency/invoices/overdue`.
 
 ---
 
-## 7. The renter pays
+## 8. The renter pays
 
 ```
 POST /api/renter/invoices/{id}/payments
@@ -248,7 +309,7 @@ of that possible.
 
 ---
 
-## 8. The landlord is told
+## 9. The landlord is told
 
 An email arrives without anyone sending one:
 
@@ -289,7 +350,7 @@ PATCH /api/me/contact/preferences
 
 ---
 
-## 9. The agency owes the landlord
+## 10. The agency owes the landlord
 
 Under `PLATFORM_COLLECTS`, each settled payment creates a payout:
 
@@ -306,7 +367,7 @@ record that nothing is owed onward.
 
 ---
 
-## 10. When rent does not arrive
+## 11. When rent does not arrive
 
 A sweep notices invoices past their due date and announces each one **once**, however
 often it runs. Both parties hear about it: the renter, who can fix it, and the landlord,
@@ -318,7 +379,7 @@ ever run.
 
 ---
 
-## 11. Ending a lease
+## 12. Ending a lease
 
 ```
 POST /api/agency/leases/{id}/termination
@@ -345,6 +406,8 @@ Worth trying, because refusals are most of the design:
 | A landlord opening another landlord's lease | `404` |
 | A renter opening another renter's invoice | `404` - and they cannot pay it either |
 | An `AGENT` deleting a house | `403` - needs `AGENCY_ADMIN` |
+| An agency admin creating another admin | `403` - only the platform can |
+| An agency admin naming another agency when adding staff | Ignored; the token decides |
 | `platform-admin` on any agency endpoint | `403` - a real role, but no agency, and a role alone is not enough |
 
 The last is the clearest statement of how this works. Being authenticated says who you

@@ -14,6 +14,7 @@ PROP = "{{propertyUrl}}"
 LEASE = "{{leaseUrl}}"
 PAY = "{{paymentUrl}}"
 NOTIF = "{{notificationUrl}}"
+AGENCY_URL = "{{agencyUrl}}"
 
 # Health and OpenAPI always bypass the gateway. A health check exists to say
 # whether one instance is up, and asking a load balancer produces the least useful
@@ -22,9 +23,11 @@ PROP_DIRECT = "{{propertyDirect}}"
 LEASE_DIRECT = "{{leaseDirect}}"
 PAY_DIRECT = "{{paymentDirect}}"
 NOTIF_DIRECT = "{{notificationDirect}}"
+AGENCY_DIRECT = "{{agencyDirect}}"
 
 AGENT = "AGENT"
 ADMIN = "AGENCY_ADMIN"
+PLATFORM = "PLATFORM_ADMIN"
 LANDLORD = "LANDLORD"
 RENTER = "RENTER"
 
@@ -546,8 +549,104 @@ contacts = folder(
             "", role=ADMIN),
     ])
 
+platform = folder(
+    "Platform - agencies",
+    "PLATFORM_ADMIN only. Creating an agency, and giving it the first administrator "
+    "that can then run it.\n\n"
+    "Somebody has to break the circle from outside: adding staff requires being an "
+    "agency admin, so a brand new agency cannot appoint its own first one. "
+    "PLATFORM_ADMIN is the one role standing outside every agency - which is also why "
+    "it is refused by every endpoint in the folder below.",
+    [
+        req("Register an agency", "POST", url(AGENCY_URL, ["api", "platform", "agencies"]),
+            "The agencyId is a lower-case slug and becomes the agency_id claim. It can "
+            "never be changed: renaming it would orphan every house, lease and invoice "
+            "filed under the old one.",
+            role=PLATFORM, agency=False, capture=("newAgencyId", "body.agencyId"),
+            body={"agencyId": "agency-c", "name": "Cocody Lettings",
+                  "city": "Abidjan", "countryCode": "CI",
+                  "contactEmail": "contact@cocody-lettings.ci"}),
+        req("List agencies", "GET", url(AGENCY_URL, ["api", "platform", "agencies"]),
+            "", role=PLATFORM, agency=False),
+        req("Get one agency", "GET",
+            url(AGENCY_URL, ["api", "platform", "agencies", "{{newAgencyId}}"]),
+            "A platform admin can read any agency. An agency admin reads only their "
+            "own, through /api/agency/profile.", role=PLATFORM, agency=False),
+        req("Give it a first administrator", "POST",
+            url(AGENCY_URL, ["api", "platform", "agencies", "{{newAgencyId}}",
+                             "administrators"]),
+            "Creates an AGENCY_ADMIN inside that agency and returns a one-time "
+            "password. The account cannot be used until the person sets their own - "
+            "logging in with the temporary one answers 'Account is not fully set up'.",
+            role=PLATFORM, agency=False,
+            body={"email": "admin@cocody-lettings.ci",
+                  "firstName": "Akissi", "lastName": "Admin"}),
+        req("Suspend an agency", "POST",
+            url(AGENCY_URL, ["api", "platform", "agencies", "{{newAgencyId}}",
+                             "suspension"]),
+            "Stops them operating without deleting anything they are responsible for.",
+            role=PLATFORM, agency=False),
+        req("Reinstate", "POST",
+            url(AGENCY_URL, ["api", "platform", "agencies", "{{newAgencyId}}",
+                             "reinstatement"]),
+            "", role=PLATFORM, agency=False),
+    ])
+
+agency_admin = folder(
+    "Agency - staff and people",
+    "AGENCY_ADMIN only. Where an agency gets its agents, and where the landlords and "
+    "renters it works with are onboarded.\n\n"
+    "**No endpoint here takes an agency.** It comes from the token on every one of "
+    "them. Sending an agencyId in the body changes nothing, which is the point: the "
+    "agency stamped on a new account is the value every other service filters its data "
+    "by, so an admin who could choose it could put an employee inside a competitor.",
+    [
+        req("My agency", "GET", url(AGENCY_URL, ["api", "agency", "profile"]),
+            "", role=ADMIN),
+        req("Update my agency", "PATCH", url(AGENCY_URL, ["api", "agency", "profile"]),
+            "The id and the status are not the agency's own to change.",
+            role=ADMIN,
+            body={"name": "Agency A (renamed)", "contactPhone": "+225 27 00 00 00"}),
+        req("Add an agent", "POST", url(AGENCY_URL, ["api", "agency", "staff"]),
+            "Only AGENT. An admin cannot create another admin - a role able to grant "
+            "itself stops being a boundary, because one compromised account becomes as "
+            "many as somebody likes. A second admin is a platform-admin operation.\n\n"
+            "Returns a one-time password, shown once and never again.",
+            role=ADMIN, capture=("staffUserId", "body.user.userId"),
+            body={"email": "new.agent@agency-a.ci",
+                  "firstName": "Kofi", "lastName": "Agent"}),
+        req("List staff", "GET", url(AGENCY_URL, ["api", "agency", "staff"]),
+            "Read from Keycloak rather than a local roster, so it cannot drift from who "
+            "can actually log in.", role=ADMIN),
+        req("Suspend an agent", "DELETE",
+            url(AGENCY_URL, ["api", "agency", "staff", "{{staffUserId}}"]),
+            "Disabled, not deleted: they still appear on every lease they signed. "
+            "Another agency's staff member answers 404, indistinguishable from somebody "
+            "who does not exist.", role=ADMIN),
+        req("Onboard a landlord", "POST",
+            url(AGENCY_URL, ["api", "agency", "landlords"]),
+            "Returns a partyId - that is what goes in landlordId when listing a house "
+            "for them.\n\n"
+            "If the address already belongs to somebody this **links** rather than "
+            "duplicating: 200 instead of 201, linked true, and no password because they "
+            "already have one. A landlord placing houses with two agencies is one person "
+            "with one portfolio, and a second partyId would silently split it in half.",
+            role=ADMIN, capture=("landlordPartyId", "body.user.partyId"),
+            body={"email": "new.landlord@example.ci",
+                  "firstName": "Yao", "lastName": "Kouame"}),
+        req("Onboard a renter", "POST", url(AGENCY_URL, ["api", "agency", "renters"]),
+            "The same, returning the partyId to use as renterId on a lease.\n\n"
+            "Send the landlord's address here instead to watch one account gain both "
+            "roles - renting a flat while letting out an inherited house is ordinary, "
+            "and it is one person either way.",
+            role=ADMIN, capture=("renterPartyId", "body.user.partyId"),
+            body={"email": "new.renter@example.ci",
+                  "firstName": "Ama", "lastName": "Kouassi"}),
+    ])
+
 SERVICES = [("property", PROP_DIRECT), ("lease", LEASE_DIRECT),
-            ("payment", PAY_DIRECT), ("notification", NOTIF_DIRECT)]
+            ("payment", PAY_DIRECT), ("notification", NOTIF_DIRECT),
+            ("agency", AGENCY_DIRECT)]
 
 health = folder(
     "Health and API docs",
@@ -561,7 +660,7 @@ health = folder(
     + [req(n + " - Swagger UI", "GET", url(b, ["q", "swagger-ui"]), "Dev only.", None)
        for n, b in SERVICES])
 
-DESCRIPTION = """Every endpoint across the four services of houseagentassistant.
+DESCRIPTION = """Every endpoint across the five services of houseagentassistant.
 
 ## Setting up
 
@@ -577,6 +676,7 @@ cd property-service     && ../mvnw quarkus:dev
 cd lease-service        && ../mvnw quarkus:dev -Ddebug=5006
 cd payment-service      && ../mvnw quarkus:dev -Ddebug=5007
 cd notification-service && ../mvnw quarkus:dev -Ddebug=5008
+cd agency-service       && ../mvnw quarkus:dev -Ddebug=5009
 ```
 
 ## Pick an environment
@@ -609,10 +709,12 @@ marketplace folder works.
 
 ## Suggested order
 
-1. **property-service** - creates a house, leaves `{{houseId}}` set
-2. **lease-service** - signs a lease against it
-3. **payment-service** - invoices derived from that lease
-4. **notification-service** - contact details; independent of the rest
+1. **agency-service** - the people: an agent, a landlord and a renter, with the
+   `partyId` values the next two folders need
+2. **property-service** - creates a house, leaves `{{houseId}}` set
+3. **lease-service** - signs a lease against it
+4. **payment-service** - invoices derived from that lease
+5. **notification-service** - contact details; independent of the rest
 
 Ids are captured into collection variables as you go, so a folder can be worked top to
 bottom without copying anything. Watch the Postman console to see what was captured.
@@ -654,11 +756,17 @@ collection = {
         {"key": "leaseUrl", "value": "http://localhost:8082"},
         {"key": "paymentUrl", "value": "http://localhost:8083"},
         {"key": "notificationUrl", "value": "http://localhost:8084"},
+        {"key": "agencyUrl", "value": "http://localhost:8085"},
         {"key": "propertyDirect", "value": "http://localhost:8081",
          "description": "Bypasses the gateway. Used by the health folder only."},
         {"key": "leaseDirect", "value": "http://localhost:8082"},
         {"key": "paymentDirect", "value": "http://localhost:8083"},
         {"key": "notificationDirect", "value": "http://localhost:8084"},
+        {"key": "agencyDirect", "value": "http://localhost:8085"},
+        {"key": "newAgencyId", "value": "", "description": "Captured by Register an agency."},
+        {"key": "staffUserId", "value": ""},
+        {"key": "landlordPartyId", "value": "", "description": "Use as landlordId on a house."},
+        {"key": "renterPartyId", "value": "", "description": "Use as renterId on a lease."},
         {"key": "keycloakUrl", "value": "http://localhost:8180"},
         {"key": "keycloakClientId", "value": "houseagent-backend"},
         {"key": "keycloakClientSecret", "value": "houseagent-dev-secret",
@@ -702,6 +810,11 @@ collection = {
                "(every minute in dev), then start at **List invoices** - it captures the "
                "id the rest of the folder uses.",
                [settlement, invoices, payments, payouts, renter, earnings]),
+        folder("agency-service (8085)",
+               "Agencies, their staff, and the landlords and renters they work with. "
+               "Start here on a fresh system: a house needs a landlordId and a lease "
+               "needs a renterId, and this is where both come from.",
+               [platform, agency_admin]),
         folder("notification-service (8084)",
                "Contact details and notification preferences.",
                [me, contacts]),
@@ -709,7 +822,7 @@ collection = {
     ],
 }
 
-def env(name, property_url, lease_url, payment_url, notification_url):
+def env(name, property_url, lease_url, payment_url, notification_url, agency_url):
     """The same collection, pointed either at the services or at the gateway."""
     return {
         "name": name,
@@ -718,11 +831,13 @@ def env(name, property_url, lease_url, payment_url, notification_url):
             {"key": "leaseUrl", "value": lease_url, "type": "default", "enabled": True},
             {"key": "paymentUrl", "value": payment_url, "type": "default", "enabled": True},
             {"key": "notificationUrl", "value": notification_url, "type": "default", "enabled": True},
+            {"key": "agencyUrl", "value": agency_url, "type": "default", "enabled": True},
             # Always the real ports, whichever environment is selected.
             {"key": "propertyDirect", "value": "http://localhost:8081", "type": "default", "enabled": True},
             {"key": "leaseDirect", "value": "http://localhost:8082", "type": "default", "enabled": True},
             {"key": "paymentDirect", "value": "http://localhost:8083", "type": "default", "enabled": True},
             {"key": "notificationDirect", "value": "http://localhost:8084", "type": "default", "enabled": True},
+            {"key": "agencyDirect", "value": "http://localhost:8085", "type": "default", "enabled": True},
             # Never the gateway: a token's `iss` is built from the host it was
             # requested through, and the services expect localhost:8180.
             {"key": "keycloakUrl", "value": "http://localhost:8180", "type": "default", "enabled": True},
@@ -747,10 +862,10 @@ environments = {
     "local-dev.postman_environment.json": env(
         "houseagentassistant - direct to services",
         "http://localhost:8081", "http://localhost:8082",
-        "http://localhost:8083", "http://localhost:8084"),
+        "http://localhost:8083", "http://localhost:8084", "http://localhost:8085"),
     "gateway.postman_environment.json": env(
         "houseagentassistant - through the gateway",
-        GATEWAY, GATEWAY, GATEWAY, GATEWAY),
+        GATEWAY, GATEWAY, GATEWAY, GATEWAY, GATEWAY),
 }
 
 

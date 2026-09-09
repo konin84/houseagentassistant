@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "houseagentassistant",
-    "description": "Every endpoint across the four services of houseagentassistant.\n\n## Setting up\n\n```\ndocker compose up -d keycloak gateway redpanda mailpit\n```\n\nThen each service from its own folder. Quarkus dev mode binds debugger port 5005, so\ngive the second and later ones their own:\n\n```\ncd property-service     && ../mvnw quarkus:dev\ncd lease-service        && ../mvnw quarkus:dev -Ddebug=5006\ncd payment-service      && ../mvnw quarkus:dev -Ddebug=5007\ncd notification-service && ../mvnw quarkus:dev -Ddebug=5008\n```\n\n## Pick an environment\n\nThe collection is the same either way; only the base URLs differ.\n\n| Environment | Talks to | Use when |\n|---|---|---|\n| `local-dev` | the four ports directly | debugging one service |\n| `gateway` | `localhost:8000` | everything else, and what a frontend will use |\n\n## Logging in\n\nRun **one** request from the **Authentication** folder. It stores a token in\n`{{accessToken}}`, which every other request sends as a bearer token, so changing who\nyou are is one click. Start with `agent-a`.\n\nThe realm has two clients. This collection uses `houseagent-backend`, which allows\npassword grant because there is no browser here to redirect. A frontend uses\n`houseagent-web` instead - authorization code with PKCE, and password grant refused. See\n`docs/frontend.md`.\n\n### Without Keycloak\n\nEvery request also carries `X-Dev-Roles`, `X-Dev-Agency` and `X-Dev-Party`. They are\nread by a bean that exists only in dev builds, and only when no real token is present -\nso they let you poke at a service with no Docker at all, and stop mattering the moment\nyou fetch a token. Send neither and you are an anonymous visitor, which is how the\nmarketplace folder works.\n\n## Suggested order\n\n1. **property-service** - creates a house, leaves `{{houseId}}` set\n2. **lease-service** - signs a lease against it\n3. **payment-service** - invoices derived from that lease\n4. **notification-service** - contact details; independent of the rest\n\nIds are captured into collection variables as you go, so a folder can be worked top to\nbottom without copying anything. Watch the Postman console to see what was captured.\n\n`docs/user-guide.md` walks the same path as a story, with what each person sees and why.\n\n## Two folders need more than the service\n\n- **payment-service** needs `redpanda`. It learns what to bill from lease events, so\n  without a broker it never hears about a signed lease and every list is correctly\n  empty. Invoices appear about a minute after signing, when the generator next runs.\n- **Agency - images** needs `CLOUDINARY_*` in `.env`, or the upload ticket answers 503.\n\n## Seeing the rules work\n\nMost of the interesting behaviour is what these endpoints *refuse*:\n\n- Get a token as `agent-b`, then re-run **Get house** - 404, not 403. Another agency's\n  house and a house that does not exist are deliberately indistinguishable.\n- Send **Sign lease** twice - the second is 409, refused by a database constraint rather\n  than by application code.\n- Send **Record a settled payment** twice with the same reference - 409, and the invoice\n  is left untouched.\n- Use the `agent-a` token on **Delete house** - 403, it needs AGENCY_ADMIN.\n- Use the `platform-admin` token anywhere - 403 everywhere, because a role alone is not\n  enough. The agency and personal endpoints need a claim it deliberately lacks.\n",
+    "description": "Every endpoint across the five services of houseagentassistant.\n\n## Setting up\n\n```\ndocker compose up -d keycloak gateway redpanda mailpit\n```\n\nThen each service from its own folder. Quarkus dev mode binds debugger port 5005, so\ngive the second and later ones their own:\n\n```\ncd property-service     && ../mvnw quarkus:dev\ncd lease-service        && ../mvnw quarkus:dev -Ddebug=5006\ncd payment-service      && ../mvnw quarkus:dev -Ddebug=5007\ncd notification-service && ../mvnw quarkus:dev -Ddebug=5008\ncd agency-service       && ../mvnw quarkus:dev -Ddebug=5009\n```\n\n## Pick an environment\n\nThe collection is the same either way; only the base URLs differ.\n\n| Environment | Talks to | Use when |\n|---|---|---|\n| `local-dev` | the four ports directly | debugging one service |\n| `gateway` | `localhost:8000` | everything else, and what a frontend will use |\n\n## Logging in\n\nRun **one** request from the **Authentication** folder. It stores a token in\n`{{accessToken}}`, which every other request sends as a bearer token, so changing who\nyou are is one click. Start with `agent-a`.\n\nThe realm has two clients. This collection uses `houseagent-backend`, which allows\npassword grant because there is no browser here to redirect. A frontend uses\n`houseagent-web` instead - authorization code with PKCE, and password grant refused. See\n`docs/frontend.md`.\n\n### Without Keycloak\n\nEvery request also carries `X-Dev-Roles`, `X-Dev-Agency` and `X-Dev-Party`. They are\nread by a bean that exists only in dev builds, and only when no real token is present -\nso they let you poke at a service with no Docker at all, and stop mattering the moment\nyou fetch a token. Send neither and you are an anonymous visitor, which is how the\nmarketplace folder works.\n\n## Suggested order\n\n1. **agency-service** - the people: an agent, a landlord and a renter, with the\n   `partyId` values the next two folders need\n2. **property-service** - creates a house, leaves `{{houseId}}` set\n3. **lease-service** - signs a lease against it\n4. **payment-service** - invoices derived from that lease\n5. **notification-service** - contact details; independent of the rest\n\nIds are captured into collection variables as you go, so a folder can be worked top to\nbottom without copying anything. Watch the Postman console to see what was captured.\n\n`docs/user-guide.md` walks the same path as a story, with what each person sees and why.\n\n## Two folders need more than the service\n\n- **payment-service** needs `redpanda`. It learns what to bill from lease events, so\n  without a broker it never hears about a signed lease and every list is correctly\n  empty. Invoices appear about a minute after signing, when the generator next runs.\n- **Agency - images** needs `CLOUDINARY_*` in `.env`, or the upload ticket answers 503.\n\n## Seeing the rules work\n\nMost of the interesting behaviour is what these endpoints *refuse*:\n\n- Get a token as `agent-b`, then re-run **Get house** - 404, not 403. Another agency's\n  house and a house that does not exist are deliberately indistinguishable.\n- Send **Sign lease** twice - the second is 409, refused by a database constraint rather\n  than by application code.\n- Send **Record a settled payment** twice with the same reference - 409, and the invoice\n  is left untouched.\n- Use the `agent-a` token on **Delete house** - 403, it needs AGENCY_ADMIN.\n- Use the `platform-admin` token anywhere - 403 everywhere, because a role alone is not\n  enough. The agency and personal endpoints need a claim it deliberately lacks.\n",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -32,6 +32,10 @@
       "value": "http://localhost:8084"
     },
     {
+      "key": "agencyUrl",
+      "value": "http://localhost:8085"
+    },
+    {
       "key": "propertyDirect",
       "value": "http://localhost:8081",
       "description": "Bypasses the gateway. Used by the health folder only."
@@ -47,6 +51,29 @@
     {
       "key": "notificationDirect",
       "value": "http://localhost:8084"
+    },
+    {
+      "key": "agencyDirect",
+      "value": "http://localhost:8085"
+    },
+    {
+      "key": "newAgencyId",
+      "value": "",
+      "description": "Captured by Register an agency."
+    },
+    {
+      "key": "staffUserId",
+      "value": ""
+    },
+    {
+      "key": "landlordPartyId",
+      "value": "",
+      "description": "Use as landlordId on a house."
+    },
+    {
+      "key": "renterPartyId",
+      "value": "",
+      "description": "Use as renterId on a lease."
     },
     {
       "key": "keycloakUrl",
@@ -2380,6 +2407,546 @@
       ]
     },
     {
+      "name": "agency-service (8085)",
+      "description": "Agencies, their staff, and the landlords and renters they work with. Start here on a fresh system: a house needs a landlordId and a lease needs a renterId, and this is where both come from.",
+      "item": [
+        {
+          "name": "Platform - agencies",
+          "description": "PLATFORM_ADMIN only. Creating an agency, and giving it the first administrator that can then run it.\n\nSomebody has to break the circle from outside: adding staff requires being an agency admin, so a brand new agency cannot appoint its own first one. PLATFORM_ADMIN is the one role standing outside every agency - which is also why it is refused by every endpoint in the folder below.",
+          "item": [
+            {
+              "name": "Register an agency",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "PLATFORM_ADMIN",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{agencyUrl}}/api/platform/agencies",
+                  "host": [
+                    "{{agencyUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "platform",
+                    "agencies"
+                  ]
+                },
+                "description": "The agencyId is a lower-case slug and becomes the agency_id claim. It can never be changed: renaming it would orphan every house, lease and invoice filed under the old one.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"agencyId\": \"agency-c\",\n  \"name\": \"Cocody Lettings\",\n  \"city\": \"Abidjan\",\n  \"countryCode\": \"CI\",\n  \"contactEmail\": \"contact@cocody-lettings.ci\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// Saves an id so the next request in this folder just works.",
+                      "if (pm.response.code < 300) {",
+                      "    const body = pm.response.json();",
+                      "    const value = body.agencyId;",
+                      "    if (value) {",
+                      "        pm.collectionVariables.set('newAgencyId', value);",
+                      "        console.log('newAgencyId =', value);",
+                      "    }",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "List agencies",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "PLATFORM_ADMIN",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{agencyUrl}}/api/platform/agencies",
+                  "host": [
+                    "{{agencyUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "platform",
+                    "agencies"
+                  ]
+                },
+                "description": ""
+              }
+            },
+            {
+              "name": "Get one agency",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "PLATFORM_ADMIN",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{agencyUrl}}/api/platform/agencies/{{newAgencyId}}",
+                  "host": [
+                    "{{agencyUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "platform",
+                    "agencies",
+                    "{{newAgencyId}}"
+                  ]
+                },
+                "description": "A platform admin can read any agency. An agency admin reads only their own, through /api/agency/profile."
+              }
+            },
+            {
+              "name": "Give it a first administrator",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "PLATFORM_ADMIN",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{agencyUrl}}/api/platform/agencies/{{newAgencyId}}/administrators",
+                  "host": [
+                    "{{agencyUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "platform",
+                    "agencies",
+                    "{{newAgencyId}}",
+                    "administrators"
+                  ]
+                },
+                "description": "Creates an AGENCY_ADMIN inside that agency and returns a one-time password. The account cannot be used until the person sets their own - logging in with the temporary one answers 'Account is not fully set up'.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"admin@cocody-lettings.ci\",\n  \"firstName\": \"Akissi\",\n  \"lastName\": \"Admin\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Suspend an agency",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "PLATFORM_ADMIN",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{agencyUrl}}/api/platform/agencies/{{newAgencyId}}/suspension",
+                  "host": [
+                    "{{agencyUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "platform",
+                    "agencies",
+                    "{{newAgencyId}}",
+                    "suspension"
+                  ]
+                },
+                "description": "Stops them operating without deleting anything they are responsible for."
+              }
+            },
+            {
+              "name": "Reinstate",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "PLATFORM_ADMIN",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{agencyUrl}}/api/platform/agencies/{{newAgencyId}}/reinstatement",
+                  "host": [
+                    "{{agencyUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "platform",
+                    "agencies",
+                    "{{newAgencyId}}",
+                    "reinstatement"
+                  ]
+                },
+                "description": ""
+              }
+            }
+          ]
+        },
+        {
+          "name": "Agency - staff and people",
+          "description": "AGENCY_ADMIN only. Where an agency gets its agents, and where the landlords and renters it works with are onboarded.\n\n**No endpoint here takes an agency.** It comes from the token on every one of them. Sending an agencyId in the body changes nothing, which is the point: the agency stamped on a new account is the value every other service filters its data by, so an admin who could choose it could put an employee inside a competitor.",
+          "item": [
+            {
+              "name": "My agency",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "AGENCY_ADMIN",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Agency",
+                    "value": "{{agencyId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{agencyUrl}}/api/agency/profile",
+                  "host": [
+                    "{{agencyUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "agency",
+                    "profile"
+                  ]
+                },
+                "description": ""
+              }
+            },
+            {
+              "name": "Update my agency",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "AGENCY_ADMIN",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Agency",
+                    "value": "{{agencyId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{agencyUrl}}/api/agency/profile",
+                  "host": [
+                    "{{agencyUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "agency",
+                    "profile"
+                  ]
+                },
+                "description": "The id and the status are not the agency's own to change.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Agency A (renamed)\",\n  \"contactPhone\": \"+225 27 00 00 00\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Add an agent",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "AGENCY_ADMIN",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Agency",
+                    "value": "{{agencyId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{agencyUrl}}/api/agency/staff",
+                  "host": [
+                    "{{agencyUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "agency",
+                    "staff"
+                  ]
+                },
+                "description": "Only AGENT. An admin cannot create another admin - a role able to grant itself stops being a boundary, because one compromised account becomes as many as somebody likes. A second admin is a platform-admin operation.\n\nReturns a one-time password, shown once and never again.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"new.agent@agency-a.ci\",\n  \"firstName\": \"Kofi\",\n  \"lastName\": \"Agent\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// Saves an id so the next request in this folder just works.",
+                      "if (pm.response.code < 300) {",
+                      "    const body = pm.response.json();",
+                      "    const value = body.user.userId;",
+                      "    if (value) {",
+                      "        pm.collectionVariables.set('staffUserId', value);",
+                      "        console.log('staffUserId =', value);",
+                      "    }",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "List staff",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "AGENCY_ADMIN",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Agency",
+                    "value": "{{agencyId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{agencyUrl}}/api/agency/staff",
+                  "host": [
+                    "{{agencyUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "agency",
+                    "staff"
+                  ]
+                },
+                "description": "Read from Keycloak rather than a local roster, so it cannot drift from who can actually log in."
+              }
+            },
+            {
+              "name": "Suspend an agent",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "AGENCY_ADMIN",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Agency",
+                    "value": "{{agencyId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{agencyUrl}}/api/agency/staff/{{staffUserId}}",
+                  "host": [
+                    "{{agencyUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "agency",
+                    "staff",
+                    "{{staffUserId}}"
+                  ]
+                },
+                "description": "Disabled, not deleted: they still appear on every lease they signed. Another agency's staff member answers 404, indistinguishable from somebody who does not exist."
+              }
+            },
+            {
+              "name": "Onboard a landlord",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "AGENCY_ADMIN",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Agency",
+                    "value": "{{agencyId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{agencyUrl}}/api/agency/landlords",
+                  "host": [
+                    "{{agencyUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "agency",
+                    "landlords"
+                  ]
+                },
+                "description": "Returns a partyId - that is what goes in landlordId when listing a house for them.\n\nIf the address already belongs to somebody this **links** rather than duplicating: 200 instead of 201, linked true, and no password because they already have one. A landlord placing houses with two agencies is one person with one portfolio, and a second partyId would silently split it in half.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"new.landlord@example.ci\",\n  \"firstName\": \"Yao\",\n  \"lastName\": \"Kouame\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// Saves an id so the next request in this folder just works.",
+                      "if (pm.response.code < 300) {",
+                      "    const body = pm.response.json();",
+                      "    const value = body.user.partyId;",
+                      "    if (value) {",
+                      "        pm.collectionVariables.set('landlordPartyId', value);",
+                      "        console.log('landlordPartyId =', value);",
+                      "    }",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Onboard a renter",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "AGENCY_ADMIN",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Agency",
+                    "value": "{{agencyId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{agencyUrl}}/api/agency/renters",
+                  "host": [
+                    "{{agencyUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "agency",
+                    "renters"
+                  ]
+                },
+                "description": "The same, returning the partyId to use as renterId on a lease.\n\nSend the landlord's address here instead to watch one account gain both roles - renting a flat while letting out an inherited house is ordinary, and it is one person either way.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"new.renter@example.ci\",\n  \"firstName\": \"Ama\",\n  \"lastName\": \"Kouassi\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// Saves an id so the next request in this folder just works.",
+                      "if (pm.response.code < 300) {",
+                      "    const body = pm.response.json();",
+                      "    const value = body.user.partyId;",
+                      "    if (value) {",
+                      "        pm.collectionVariables.set('renterPartyId', value);",
+                      "        console.log('renterPartyId =', value);",
+                      "    }",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "notification-service (8084)",
       "description": "Contact details and notification preferences.",
       "item": [
@@ -2664,6 +3231,24 @@
           }
         },
         {
+          "name": "agency - health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{agencyDirect}}/q/health",
+              "host": [
+                "{{agencyDirect}}"
+              ],
+              "path": [
+                "q",
+                "health"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
           "name": "property - OpenAPI",
           "request": {
             "method": "GET",
@@ -2736,6 +3321,24 @@
           }
         },
         {
+          "name": "agency - OpenAPI",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{agencyDirect}}/q/openapi",
+              "host": [
+                "{{agencyDirect}}"
+              ],
+              "path": [
+                "q",
+                "openapi"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
           "name": "property - Swagger UI",
           "request": {
             "method": "GET",
@@ -2798,6 +3401,24 @@
               "raw": "{{notificationDirect}}/q/swagger-ui",
               "host": [
                 "{{notificationDirect}}"
+              ],
+              "path": [
+                "q",
+                "swagger-ui"
+              ]
+            },
+            "description": "Dev only."
+          }
+        },
+        {
+          "name": "agency - Swagger UI",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{agencyDirect}}/q/swagger-ui",
+              "host": [
+                "{{agencyDirect}}"
               ],
               "path": [
                 "q",
