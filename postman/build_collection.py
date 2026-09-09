@@ -611,9 +611,13 @@ agency_admin = folder(
             "Only AGENT. An admin cannot create another admin - a role able to grant "
             "itself stops being a boundary, because one compromised account becomes as "
             "many as somebody likes. A second admin is a platform-admin operation.\n\n"
-            "Returns a one-time password, shown once and never again.",
+            "Returns a one-time password, shown once and never again.\n\n"
+            "The address carries `{{$timestamp}}` so the folder can be run more than "
+            "once. With a fixed one the second run answers 409 - correctly, since an "
+            "email belongs to one account - and every request after it has no user id "
+            "to work with. Drop the timestamp to see that refusal deliberately.",
             role=ADMIN, capture=("staffUserId", "body.user.userId"),
-            body={"email": "new.agent@agency-a.ci",
+            body={"email": "new.agent+{{$timestamp}}@agency-a.ci",
                   "firstName": "Kofi", "lastName": "Agent"}),
         req("List staff", "GET", url(AGENCY_URL, ["api", "agency", "staff"]),
             "Read from Keycloak rather than a local roster, so it cannot drift from who "

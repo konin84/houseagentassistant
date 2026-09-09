@@ -13,6 +13,12 @@ quarkus:
     jdbc:
       url: jdbc:postgresql://localhost:5432/houseagent_agency
 
+  # db/dev adds the two agencies the seeded Keycloak users belong to. Without them
+  # admin-a is an administrator of an agency that does not exist, and opening their
+  # own profile answers 404. Production runs db/migration alone.
+  flyway:
+    locations: db/migration,db/dev
+
   oidc:
     enabled: true
     auth-server-url: ${OIDC_AUTH_SERVER_URL:http://localhost:8180/realms/houseagent}
