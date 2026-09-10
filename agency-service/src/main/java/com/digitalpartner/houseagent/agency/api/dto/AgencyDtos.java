@@ -39,6 +39,38 @@ public final class AgencyDtos {
     public record ChangePlanRequest(@NotNull SubscriptionPlan plan) {
     }
 
+    /**
+     * An agency signing itself up, sent by somebody with no account and no token.
+     *
+     * <p>Read this record for what is missing as much as what is here. There is no
+     * {@code agencyId} - the id is derived from the name, because it is the tenancy
+     * discriminator and not a stranger's to choose. There is no {@code plan} - every
+     * signup lands on the free one. There is no {@code role} - it is always
+     * {@code AGENCY_ADMIN}. Each of those would be a field an attacker fills in.
+     *
+     * @param password the person's own, not one this service generates. A temporary
+     *                 password would have to be returned over an unauthenticated
+     *                 response and then immediately changed, which is two secrets in
+     *                 flight where one will do.
+     */
+    public record SignupRequest(
+            @NotBlank @Size(min = 2, max = 200) String agencyName,
+            @Size(max = 120) String city,
+            @Pattern(regexp = "[A-Z]{2}", message = "must be a 2-letter ISO country code")
+            String countryCode,
+            @Size(max = 40) String contactPhone,
+            @NotBlank @Email @Size(max = 320) String adminEmail,
+            @Size(max = 200) String firstName,
+            @Size(max = 200) String lastName,
+            /**
+             * Eight is what the development realm's seeded accounts use, so the API and
+             * the realm agree. A deployment should raise both together - the realm's
+             * {@code passwordPolicy} is the one that cannot be bypassed, since it also
+             * governs every later password change.
+             */
+            @NotBlank @Size(min = 8, max = 128) String password) {
+    }
+
     public record UpdateAgencyRequest(
             @Size(max = 200) String name,
             @Size(max = 120) String city,
@@ -91,6 +123,32 @@ public final class AgencyDtos {
                     agency.contactEmail, agency.contactPhone, agency.status,
                     agency.plan, agency.plan.maxHouses(), agency.planChangedAt,
                     agency.createdAt);
+        }
+    }
+
+    /**
+     * The result of a signup: an agency, and the person who may act for it.
+     *
+     * <p>No credential comes back. The caller chose their own password and already has
+     * it, so there is nothing here worth intercepting - which is the point of having
+     * them choose it rather than being handed one.
+     *
+     * @param nextStep what to actually do now, because the reply to a signup is the one
+     *                 place a client has no earlier response to infer it from
+     */
+    public record SignupResponse(
+            AgencyResponse agency,
+            UserResponse administrator,
+            String nextStep) {
+
+        public static SignupResponse from(Agency agency, PlatformUser administrator) {
+            return new SignupResponse(
+                    AgencyResponse.from(agency),
+                    UserResponse.from(administrator),
+                    "Sign in with the email and password you just chose. Your agency is "
+                            + "on the " + agency.plan + " plan, which allows "
+                            + agency.plan.maxHouses() + " houses. Contact the platform "
+                            + "to move to a larger one.");
         }
     }
 

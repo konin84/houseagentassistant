@@ -45,6 +45,22 @@ http:
         accessControlMaxAge: 3600
         addVaryHeader: true
 
+    # Signup is the one unauthenticated endpoint that causes an account to exist,
+    # which makes it the one worth throttling. Rate limiting belongs here rather
+    # than in the service: an in-process counter is per instance, so it relaxes
+    # every time the service scales out - exactly when it matters most.
+    #
+    # One request a second, bursting to five, per source address. Generous for a
+    # person filling in a form once in their life, and slow enough that creating
+    # accounts in bulk stops being worth anyone's afternoon. It is not a defence
+    # against a distributed attempt; that needs a CAPTCHA and a verification mail,
+    # neither of which this platform has yet.
+    signup-throttle:
+      rateLimit:
+        average: 1
+        burst: 5
+        period: 1s
+
   routers:
 
     # --- property-service ---------------------------------------------------
@@ -119,6 +135,14 @@ http:
       service: agency
       entryPoints: [web]
       middlewares: [dev-cors]
+
+    # The only route on the platform that a caller with no token is expected to
+    # reach - and therefore the only one carrying a rate limit.
+    agency-signup:
+      rule: "PathPrefix(`/api/signup`)"
+      service: agency
+      entryPoints: [web]
+      middlewares: [dev-cors, signup-throttle]
 
     # --- notification-service -----------------------------------------------
     notification-contacts:

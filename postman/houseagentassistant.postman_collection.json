@@ -62,6 +62,11 @@
       "description": "Captured by Register an agency."
     },
     {
+      "key": "signupAgencyId",
+      "value": "",
+      "description": "Captured by Sign up an agency. Derived from the name you gave, not chosen by you."
+    },
+    {
       "key": "staffUserId",
       "value": ""
     },
@@ -2408,8 +2413,98 @@
     },
     {
       "name": "agency-service (8085)",
-      "description": "Agencies, their staff, and the landlords and renters they work with. Start here on a fresh system: a house needs a landlordId and a lease needs a renterId, and this is where both come from.",
+      "description": "Agencies, their staff, and the landlords and renters they work with. Start here on a fresh system: a house needs a landlordId and a lease needs a renterId, and this is where both come from.\n\nTwo ways an agency comes to exist. **Signup** is the self-service one and needs no account. **Platform** is the same thing done on somebody's behalf by a PLATFORM_ADMIN, and is also how an agency gets a *second* administrator or replaces one it has lost.",
       "item": [
+        {
+          "name": "Signup - starting an agency",
+          "description": "The only endpoint on the platform that works with no token at all.\n\nAn agency arriving from nowhere has neither an account nor an agency, and cannot get one without the other: adding staff needs an agency admin, and being an agency admin needs an agency. This creates both in one step, which is the only way to create either.\n\n**Every new agency lands on FREE - five houses.** Moving to a larger plan is in the Platform folder and needs a PLATFORM_ADMIN, because there is no payment behind any of this yet and an agency able to set its own plan would take the unlimited one.\n\nThree things this request does not let you decide, however you fill it in: the plan, the role, and the agencyId. Add them to the body and watch nothing change - each is chosen by the service, because each is a field an attacker would fill in. The agencyId in particular is the value every other service filters data by; it is derived from the name you give rather than accepted from you.",
+          "item": [
+            {
+              "name": "Sign up an agency",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{agencyUrl}}/api/signup",
+                  "host": [
+                    "{{agencyUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "signup"
+                  ]
+                },
+                "description": "No Authorization header, and none needed.\n\nThe password is yours: unlike a provisioned account, nothing comes back that you then have to change. Sign in with it straight away using the Authentication folder - swap the username for the email you used here.\n\nThe agencyId in the response is derived from agencyName. 'Cocody Lettings' becomes 'cocody-lettings'; a name already taken gets a numbered variant, because two real businesses may share a name and the platform's tenancy scheme does not get to decide who exists.\n\nTry it twice with the same agencyName and different emails to see that. Try it twice with the same email to get 409 - an address that already has an account means sign in, not a second identity.",
+                "auth": {
+                  "type": "noauth"
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"agencyName\": \"Cocody Lettings\",\n  \"city\": \"Abidjan\",\n  \"countryCode\": \"CI\",\n  \"contactPhone\": \"+225 07 00 00 00 00\",\n  \"adminEmail\": \"founder-{{$timestamp}}@cocody-lettings.ci\",\n  \"firstName\": \"Akissi\",\n  \"lastName\": \"Kouame\",\n  \"password\": \"choose-your-own\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// Saves an id so the next request in this folder just works.",
+                      "if (pm.response.code < 300) {",
+                      "    const body = pm.response.json();",
+                      "    const value = body.agency.agencyId;",
+                      "    if (value) {",
+                      "        pm.collectionVariables.set('signupAgencyId', value);",
+                      "        console.log('signupAgencyId =', value);",
+                      "    }",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "My agency, straight after signing up",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Dev-Roles",
+                    "value": "AGENCY_ADMIN",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  },
+                  {
+                    "key": "X-Dev-Agency",
+                    "value": "{{agencyId}}",
+                    "description": "Dev only. A production build does not contain the augmentor that reads this, so it is ignored there."
+                  }
+                ],
+                "url": {
+                  "raw": "{{agencyUrl}}/api/agency/profile",
+                  "host": [
+                    "{{agencyUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "agency",
+                    "profile"
+                  ]
+                },
+                "description": "Get a token for the account you just made first - Authentication folder, with your new email and password - or this answers 401.\n\nplan is FREE and maxHouses is 5. A frontend can show '0 of 5 used' from exactly this, and disable the add button before somebody hits the wall rather than after."
+              }
+            }
+          ]
+        },
         {
           "name": "Platform - agencies",
           "description": "PLATFORM_ADMIN only. Creating an agency, and giving it the first administrator that can then run it.\n\nSomebody has to break the circle from outside: adding staff requires being an agency admin, so a brand new agency cannot appoint its own first one. PLATFORM_ADMIN is the one role standing outside every agency - which is also why it is refused by every endpoint in the folder below.",

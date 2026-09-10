@@ -5,6 +5,7 @@ import com.digitalpartner.houseagent.agency.service.AgencyAlreadyExistsException
 import com.digitalpartner.houseagent.agency.service.AgencyNotFoundException;
 import com.digitalpartner.houseagent.agency.service.AlreadyRegisteredException;
 import com.digitalpartner.houseagent.agency.service.RoleNotGrantableException;
+import com.digitalpartner.houseagent.agency.service.SignupFailedException;
 import com.digitalpartner.houseagent.agency.service.StaffNotFoundException;
 import com.digitalpartner.houseagent.common.api.ApiError;
 import jakarta.validation.ConstraintViolation;
@@ -69,6 +70,18 @@ public class ExceptionMappers {
     public Response directoryFailed(DirectoryException e) {
         return Response.status(Response.Status.BAD_GATEWAY)
                 .entity(ApiError.of("IDENTITY_PROVIDER_ERROR", e.getMessage()))
+                .build();
+    }
+
+    /**
+     * 503 rather than 500. Signup ran out of ids to try, which says the platform is in
+     * an odd state rather than that the caller sent anything wrong - and unlike a 500,
+     * it tells them that trying again later is a reasonable thing to do.
+     */
+    @ServerExceptionMapper
+    public Response signupFailed(SignupFailedException e) {
+        return Response.status(Response.Status.SERVICE_UNAVAILABLE)
+                .entity(ApiError.of("SIGNUP_FAILED", e.getMessage()))
                 .build();
     }
 

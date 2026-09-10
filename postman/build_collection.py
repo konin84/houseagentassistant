@@ -57,7 +57,8 @@ def headers(role, party, agency, json_body):
     return h
 
 
-def req(name, method, u, desc, role=None, party=None, agency=True, body=None, capture=None):
+def req(name, method, u, desc, role=None, party=None, agency=True, body=None, capture=None,
+        noauth=False):
     item = {
         "name": name,
         "request": {
@@ -67,6 +68,11 @@ def req(name, method, u, desc, role=None, party=None, agency=True, body=None, ca
             "description": desc,
         },
     }
+    if noauth:
+        # Overrides the collection's bearer auth. Sending a token to signup would not
+        # break it, but it would hide the only thing worth demonstrating: that this
+        # works with no account at all.
+        item["request"]["auth"] = {"type": "noauth"}
     if body is not None:
         item["request"]["body"] = {
             "mode": "raw",
@@ -553,6 +559,57 @@ contacts = folder(
             "", role=ADMIN),
     ])
 
+signup = folder(
+    "Signup - starting an agency",
+    "The only endpoint on the platform that works with no token at all.\n\n"
+    "An agency arriving from nowhere has neither an account nor an agency, and cannot "
+    "get one without the other: adding staff needs an agency admin, and being an agency "
+    "admin needs an agency. This creates both in one step, which is the only way to "
+    "create either.\n\n"
+    "**Every new agency lands on FREE - five houses.** Moving to a larger plan is in "
+    "the Platform folder and needs a PLATFORM_ADMIN, because there is no payment behind "
+    "any of this yet and an agency able to set its own plan would take the unlimited "
+    "one.\n\n"
+    "Three things this request does not let you decide, however you fill it in: the "
+    "plan, the role, and the agencyId. Add them to the body and watch nothing change - "
+    "each is chosen by the service, because each is a field an attacker would fill in. "
+    "The agencyId in particular is the value every other service filters data by; it is "
+    "derived from the name you give rather than accepted from you.",
+    [
+        req("Sign up an agency", "POST", url(AGENCY_URL, ["api", "signup"]),
+            "No Authorization header, and none needed.\n\n"
+            "The password is yours: unlike a provisioned account, nothing comes back "
+            "that you then have to change. Sign in with it straight away using the "
+            "Authentication folder - swap the username for the email you used here.\n\n"
+            "The agencyId in the response is derived from agencyName. "
+            "'Cocody Lettings' becomes 'cocody-lettings'; a name already taken gets a "
+            "numbered variant, because two real businesses may share a name and the "
+            "platform's tenancy scheme does not get to decide who exists.\n\n"
+            "Try it twice with the same agencyName and different emails to see that. "
+            "Try it twice with the same email to get 409 - an address that already has "
+            "an account means sign in, not a second identity.",
+            role=None, agency=False, noauth=True,
+            capture=("signupAgencyId", "body.agency.agencyId"),
+            body={"agencyName": "Cocody Lettings",
+                  "city": "Abidjan",
+                  "countryCode": "CI",
+                  "contactPhone": "+225 07 00 00 00 00",
+                  # Timestamped so the folder is re-runnable. A fixed address answers
+                  # 409 for the rest of the day, which reads like a broken request.
+                  "adminEmail": "founder-{{$timestamp}}@cocody-lettings.ci",
+                  "firstName": "Akissi",
+                  "lastName": "Kouame",
+                  "password": "choose-your-own"}),
+        req("My agency, straight after signing up", "GET",
+            url(AGENCY_URL, ["api", "agency", "profile"]),
+            "Get a token for the account you just made first - Authentication folder, "
+            "with your new email and password - or this answers 401.\n\n"
+            "plan is FREE and maxHouses is 5. A frontend can show '0 of 5 used' from "
+            "exactly this, and disable the add button before somebody hits the wall "
+            "rather than after.",
+            role=ADMIN),
+    ])
+
 platform = folder(
     "Platform - agencies",
     "PLATFORM_ADMIN only. Creating an agency, and giving it the first administrator "
@@ -787,6 +844,9 @@ collection = {
         {"key": "notificationDirect", "value": "http://localhost:8084"},
         {"key": "agencyDirect", "value": "http://localhost:8085"},
         {"key": "newAgencyId", "value": "", "description": "Captured by Register an agency."},
+        {"key": "signupAgencyId", "value": "",
+         "description": "Captured by Sign up an agency. Derived from the name you gave, "
+                        "not chosen by you."},
         {"key": "staffUserId", "value": ""},
         {"key": "landlordPartyId", "value": "", "description": "Use as landlordId on a house."},
         {"key": "renterPartyId", "value": "", "description": "Use as renterId on a lease."},
@@ -836,8 +896,12 @@ collection = {
         folder("agency-service (8085)",
                "Agencies, their staff, and the landlords and renters they work with. "
                "Start here on a fresh system: a house needs a landlordId and a lease "
-               "needs a renterId, and this is where both come from.",
-               [platform, agency_admin]),
+               "needs a renterId, and this is where both come from.\n\n"
+               "Two ways an agency comes to exist. **Signup** is the self-service one "
+               "and needs no account. **Platform** is the same thing done on somebody's "
+               "behalf by a PLATFORM_ADMIN, and is also how an agency gets a *second* "
+               "administrator or replaces one it has lost.",
+               [signup, platform, agency_admin]),
         folder("notification-service (8084)",
                "Contact details and notification preferences.",
                [me, contacts]),

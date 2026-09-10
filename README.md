@@ -62,11 +62,16 @@ no agency rather than falling back to a default.
 | `lease-service` | 8082 | **Complete** | Leases, payment modality, availability transitions |
 | `payment-service` | 8083 | **Complete** | Invoices, payments, commission, landlord payouts |
 | `notification-service` | 8084 | **Complete** | Contact details, email delivery and retry |
-| `agency-service` | 8085 | **Complete** | Agencies, subscription plans, staff, and onboarding landlords and renters |
+| `agency-service` | 8085 | **Complete** | Agency signup, subscription plans, staff, and onboarding landlords and renters |
 
 All five validate bearer JWTs from the Keycloak realm in `infra/keycloak/`.
 `agency-service` is also the one that *creates* the accounts, through Keycloak's
-admin API - see [Who creates whom](#who-creates-whom).
+admin API - see [who creates whom](docs/user-guide.md#who-creates-whom).
+
+Two endpoints on the whole platform take no token: the public marketplace, and
+`POST /api/signup`. An agency starts itself there, on the free plan, because adding
+staff requires being an agency admin and being an agency admin requires an agency - so
+the first of each has to come into existence in the same request.
 
 Landlords deliberately have no service of their own: a landlord is a Keycloak
 principal, their link to houses lives in `property-service`, what they are owed lives
@@ -155,7 +160,7 @@ would actually deploy.
 
 ### Trying the API
 
-`postman/houseagentassistant.postman_collection.json` covers all 58 endpoints. Import it
+`postman/houseagentassistant.postman_collection.json` covers all 59 endpoints. Import it
 with one of the two environments - the collection is identical either way, only the base
 URLs differ:
 

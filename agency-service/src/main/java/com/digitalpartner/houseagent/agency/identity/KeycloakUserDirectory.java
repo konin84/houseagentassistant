@@ -88,7 +88,8 @@ public class KeycloakUserDirectory implements UserDirectory {
         representation.setFirstName(user.firstName());
         representation.setLastName(user.lastName());
         representation.setEnabled(true);
-        // Not verified: nobody has proved they own this address yet. An agency typed it.
+        // Not verified: nobody has proved they own this address yet. Somebody typed it -
+        // an agency onboarding a landlord, or a stranger signing up.
         representation.setEmailVerified(false);
 
         Map<String, List<String>> attributes = new java.util.HashMap<>();
@@ -102,10 +103,12 @@ public class KeycloakUserDirectory implements UserDirectory {
 
         CredentialRepresentation password = new CredentialRepresentation();
         password.setType(CredentialRepresentation.PASSWORD);
-        password.setValue(user.temporaryPassword());
-        // Forces a change at first login, so the password an admin can see stops
-        // working the moment the real person uses it.
-        password.setTemporary(true);
+        password.setValue(user.password());
+        // Temporary for a provisioned account, so the password an admin can see stops
+        // working the moment the real person uses it. Not temporary when the person
+        // chose it themselves at signup - there is nobody else who has seen it, and
+        // demanding they change the password they just picked teaches them nothing.
+        password.setTemporary(user.mustChangePassword());
         representation.setCredentials(List.of(password));
 
         String userId;

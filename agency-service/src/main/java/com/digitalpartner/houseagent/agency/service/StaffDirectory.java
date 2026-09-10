@@ -69,7 +69,7 @@ public class StaffDirectory {
         });
 
         String temporary = passwords.generate();
-        PlatformUser created = users.create(new NewUser(
+        PlatformUser created = users.create(NewUser.provisioned(
                 email.trim(), firstName, lastName, role,
                 // The agency is the caller's own, decided here rather than accepted.
                 agencyId,

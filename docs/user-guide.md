@@ -27,12 +27,58 @@ may place one house with agency A and another with agency B, and sees both in on
 
 ### Who creates whom
 
-Nobody signs themselves up. Every account is created by somebody one level out:
+An agency starts itself. Everybody else is created by somebody one level out:
 
 | Creates | Who does it |
 |---|---|
-| An agency, and its first admin | `PLATFORM_ADMIN` |
+| An agency, and the admin who runs it | **anyone**, at `POST /api/signup` |
+| An agency, on somebody's behalf | `PLATFORM_ADMIN` |
+| A second admin, or a replacement | `PLATFORM_ADMIN` |
 | Agents, landlords, renters | `AGENCY_ADMIN` of that agency |
+
+Signup exists because of a circle: adding staff requires being an agency admin, and
+being an agency admin requires an agency. Somebody has to break that from outside. It
+used to be only the platform admin; now it can also be the person starting the agency,
+who arrives with neither half and gets both in one request.
+
+```
+POST /api/signup                      (no token - they have nothing to get one with)
+{ "agencyName": "Cocody Lettings", "city": "Abidjan", "countryCode": "CI",
+  "adminEmail": "akissi@cocody-lettings.ci", "password": "..." }
+```
+
+They sign in with the password they just chose. Nothing secret comes back, unlike a
+provisioned account - there is no second credential to pass on, because the person
+already has the first one.
+
+**The new agency is on `FREE`, and cannot leave it on its own.** See
+[what the agency is allowed to hold](#3-what-the-agency-is-allowed-to-hold).
+
+Three things the signup form does not get to decide, however it is filled in:
+
+| Not theirs to choose | Why |
+|---|---|
+| The plan | An anonymous caller naming a tier would name the unlimited one |
+| The role | Always `AGENCY_ADMIN`. A settable role is a settable `PLATFORM_ADMIN` |
+| The `agencyId` | Derived from the name. It is the value every service filters data by |
+
+That last one is the sharpest. An `agencyId` accepted from the body would let anyone
+sign up naming `agency-a` and receive an admin token for somebody else's customers -
+one request, every isolation rule defeated. So the id is derived: "Cocody Lettings"
+becomes `cocody-lettings`, and a name already taken gets a numbered variant, because two
+real businesses may share a name and the tenancy scheme does not get to rule on that.
+
+**What signup does not yet do is prove the email address belongs to whoever typed it.**
+The account is created unverified and works anyway, so somebody can sign up as
+`contact@a-real-agency.example` and sit on it. Closing that needs a verification mail
+and SMTP in the realm. Until then it is a rate limit at the gateway, and the fact that
+an unverified agency can reach nobody: it has no landlords, no renters, no houses.
+
+Keycloak's own registration page stays switched off, which is not a contradiction. A
+user registered there would have no `agency_id` and no role - somebody holding a
+perfectly valid token that every endpoint refuses. An agency and its administrator only
+make sense created together, which is why signup is an API call and not a link on the
+login page.
 
 An agency admin **cannot create another agency admin** - a role able to grant itself is
 not a boundary, since one compromised account becomes as many as an attacker likes. A
@@ -457,6 +503,8 @@ Worth trying, because refusals are most of the design:
 | An agency admin creating another admin | `403` - only the platform can |
 | An agency admin naming another agency when adding staff | Ignored; the token decides |
 | An agency admin changing their own plan | `403` - platform work, since there is no payment behind it |
+| Signing up with an address that already has an account | `409` - sign in instead |
+| Signing up naming a plan, a role or an agencyId | Ignored; all three are decided by the service |
 | A sixth house on the free plan | `402`, with how many of how many |
 | `platform-admin` on any agency endpoint | `403` - a real role, but no agency, and a role alone is not enough |
 

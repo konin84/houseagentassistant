@@ -94,7 +94,7 @@ public class AgencyRegistry {
         });
 
         String temporary = passwords.generate();
-        PlatformUser created = users.create(new NewUser(
+        PlatformUser created = users.create(NewUser.provisioned(
                 email.trim(), firstName, lastName, Roles.AGENCY_ADMIN, agencyId, null, temporary));
 
         LOG.infof("Agency %s given its first admin, %s", agencyId, email);
@@ -157,6 +157,20 @@ public class AgencyRegistry {
             throw new AgencyNotFoundException(agencyId);
         }
         return agency;
+    }
+
+    /**
+     * Removes an agency created moments ago whose administrator could not be created.
+     *
+     * <p>The only deletion in this service, and deliberately not exposed anywhere. An
+     * agency that has operated for a day has houses, leases and money attached to it in
+     * three other services, none of which would hear about this - which is why suspending
+     * is the answer everywhere else. The one safe case is the one this exists for: an
+     * agency seconds old that nobody has ever been able to act for.
+     */
+    @Transactional
+    public void deleteAbandoned(String agencyId) {
+        Agency.deleteById(agencyId);
     }
 
     @Transactional

@@ -1,5 +1,6 @@
 package com.digitalpartner.houseagent.agency;
 
+import com.digitalpartner.houseagent.agency.identity.DirectoryException;
 import com.digitalpartner.houseagent.agency.identity.NewUser;
 import com.digitalpartner.houseagent.agency.identity.PlatformUser;
 import com.digitalpartner.houseagent.agency.identity.UserDirectory;
@@ -32,6 +33,27 @@ public class InMemoryUserDirectory implements UserDirectory {
 
     private final Map<String, PlatformUser> byId = new ConcurrentHashMap<>();
 
+    /** What each account was created with, so a test can check how it was created. */
+    private final Map<String, NewUser> requestsByEmail = new ConcurrentHashMap<>();
+
+    /**
+     * Makes the next {@code create} fail.
+     *
+     * <p>For the one case that cannot be arranged any other way: signup creating an
+     * agency and then failing to give it an administrator. A real Keycloak can refuse
+     * for reasons this service cannot foresee, and what matters is what is left behind.
+     */
+    private volatile boolean failNextCreate;
+
+    public void failNextCreate() {
+        failNextCreate = true;
+    }
+
+    /** How the account for this address was asked for, or null if it was never created. */
+    public NewUser creationRequestFor(String email) {
+        return requestsByEmail.get(email.trim().toLowerCase());
+    }
+
     /** Lets a test arrange somebody who already exists, as a second agency would find. */
     public PlatformUser seed(String email, String role, String agencyId, String partyId) {
         String id = UUID.randomUUID().toString();
@@ -44,6 +66,8 @@ public class InMemoryUserDirectory implements UserDirectory {
 
     public void clear() {
         byId.clear();
+        requestsByEmail.clear();
+        failNextCreate = false;
     }
 
     @Override
@@ -67,6 +91,12 @@ public class InMemoryUserDirectory implements UserDirectory {
 
     @Override
     public PlatformUser create(NewUser user) {
+        if (failNextCreate) {
+            failNextCreate = false;
+            throw new DirectoryException("Injected failure");
+        }
+        requestsByEmail.put(user.email().trim().toLowerCase(), user);
+
         String id = UUID.randomUUID().toString();
         PlatformUser created = new PlatformUser(
                 id, user.email(), user.email(), user.firstName(), user.lastName(),

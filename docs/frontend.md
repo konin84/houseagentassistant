@@ -86,16 +86,61 @@ All six share the password `password`.
 
 ### Where accounts come from
 
-Nobody self-registers, and the frontend has no sign-up screen to build. Every account is
-created by somebody one level out:
+An agency signs itself up. Everybody else is created by somebody one level out:
 
 | Creating | Done by | Endpoint |
 |---|---|---|
-| An agency and its first admin | `PLATFORM_ADMIN` | `POST /api/platform/agencies` |
+| An agency and the admin who runs it | **anyone** | `POST /api/signup` |
+| An agency, on somebody's behalf | `PLATFORM_ADMIN` | `POST /api/platform/agencies` |
 | An agent | `AGENCY_ADMIN` | `POST /api/agency/staff` |
 | A landlord or renter | `AGENCY_ADMIN` | `POST /api/agency/landlords`, `/renters` |
 
-Two things about that matter for the UI.
+### The one screen you do build: signup
+
+`POST /api/signup` is the only endpoint on the platform that takes no token, and the
+only one that turns an anonymous visitor into somebody who can sign in.
+
+```ts
+await fetch(`${API}/api/signup`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    agencyName: "Cocody Lettings",   // the agencyId is derived from this
+    city: "Abidjan",
+    countryCode: "CI",               // 2-letter ISO, uppercase
+    contactPhone: "+225 07 00 00 00 00",
+    adminEmail: "akissi@cocody-lettings.ci",
+    firstName: "Akissi",
+    lastName: "Kouame",
+    password: "...",                 // theirs, minimum 8
+  }),
+});
+// -> 201 { agency: { agencyId, plan: "FREE", maxHouses: 5, ... },
+//          administrator: { userId, roles: ["AGENCY_ADMIN"], agencyId, ... },
+//          nextStep: "..." }
+```
+
+Four things to get right in that form.
+
+**Do not offer a plan picker.** Every signup lands on `FREE`. A `plan` field in the body
+is ignored rather than rejected, so a picker would appear to work and silently do
+nothing. Same for `role` and `agencyId` - all three are decided by the service.
+
+**Do not ask for the agency id.** It is derived from `agencyName` and returned. Show it
+afterwards if you like, since it turns up in support conversations, but there is nothing
+to type and nothing to validate. Two agencies with the same name both succeed; the
+second gets a numbered variant.
+
+**Send them to the login screen, not into the app.** Signup does not return a token - it
+creates an account, and the person then authenticates through Keycloak like anybody
+else. Prefill the email; they already know the password, having just chosen it.
+
+**`409 EMAIL_ALREADY_REGISTERED` is the interesting failure.** It usually means this
+person already has an account, very often as a landlord or renter with an agency they
+work with. "Sign in instead" is the right message; "that email is taken" is not, because
+it is *their* email.
+
+Then two things about the rest of that table.
 
 **Onboarding returns a `partyId`**, and that is what you then send as `landlordId` when
 creating a house or `renterId` when signing a lease. There is nowhere else to get one.
@@ -139,6 +184,7 @@ claim - so it gets `403` from both the agency and the personal endpoints. If you
 | Code | Means | What the UI should do |
 |---|---|---|
 | `401` | No token, expired token, or an invalid one | Refresh, or send them back to login |
+| `409` on signup | The email already has an account | Say "sign in instead", not "taken" |
 | `403` | Authenticated, but the wrong role - or the right role without the claim | Do not retry. Hide the control that produced it |
 | `404` | Not found **or** belongs to another agency | Treat as not found. Do not say "no permission" |
 | `409` | The request was valid but the world moved | Re-read and show the user what changed |

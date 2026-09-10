@@ -64,7 +64,7 @@ public class PartyDirectory {
         }
 
         String temporary = passwords.generate();
-        PlatformUser created = users.create(new NewUser(
+        PlatformUser created = users.create(NewUser.provisioned(
                 email.trim(), firstName, lastName, role,
                 // No agency: landlords and renters are platform-wide principals, and an
                 // agency_id on one would make the tenant filter hide their own data
