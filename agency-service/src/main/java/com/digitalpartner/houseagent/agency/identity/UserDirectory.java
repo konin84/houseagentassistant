@@ -23,6 +23,15 @@ public interface UserDirectory {
 
     Optional<PlatformUser> findById(String userId);
 
+    /**
+     * Finds whoever holds this number, which must already be normalised.
+     *
+     * <p>Exists so a number can be refused before it is handed out twice. A phone number
+     * is a login identifier here, and two accounts claiming one would mean the person
+     * signing in with it reaches whichever the directory happened to return.
+     */
+    Optional<PlatformUser> findByPhone(String phone);
+
     /** Everybody carrying this agency's id - the staff roster. */
     List<PlatformUser> findByAgency(String agencyId);
 

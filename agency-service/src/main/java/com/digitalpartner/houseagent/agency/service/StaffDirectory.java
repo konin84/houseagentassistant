@@ -47,6 +47,9 @@ public class StaffDirectory {
     @Inject
     TemporaryPasswords passwords;
 
+    @Inject
+    PhoneIdentifiers phones;
+
     /**
      * Creates a member of staff in the caller's own agency.
      *
@@ -54,7 +57,7 @@ public class StaffDirectory {
      * @return the new user, and the one-time password to hand over
      */
     public Provisioned addStaff(String agencyId, String email, String firstName,
-                                String lastName, String role) {
+                                String lastName, String phone, String role) {
         if (!GRANTABLE.contains(role)) {
             throw new RoleNotGrantableException(
                     "An agency admin may create " + String.join(", ", GRANTABLE)
@@ -68,6 +71,8 @@ public class StaffDirectory {
                     "That email address already belongs to an account");
         });
 
+        String number = phones.claim(phone);
+
         String temporary = passwords.generate();
         PlatformUser created = users.create(NewUser.provisioned(
                 email.trim(), firstName, lastName, role,
@@ -76,6 +81,7 @@ public class StaffDirectory {
                 // Staff have no party_id. They act for an agency, and are not
                 // themselves a landlord or a renter of anything.
                 null,
+                number,
                 temporary));
 
         LOG.infof("Agency %s added %s as %s", agencyId, email, role);

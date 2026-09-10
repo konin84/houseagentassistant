@@ -71,18 +71,41 @@ These are deliberate, so you know what you are looking at when they happen:
   the entire point of redirecting to Keycloak. The separate `houseagent-backend` client
   allows it for Postman and curl, where there is no browser to redirect.
 
+### Signing in with a phone number
+
+**Every account can sign in with a phone number or an email address.** Both reach the
+same account and return the same claims; there is nothing to choose and no separate
+endpoint. It works because the number is the person's Keycloak *username*, and Keycloak
+accepts a username or an email at the login form.
+
+For the UI that means one field, labelled for both - "Phone number or email". Do not
+build a toggle, and do not try to detect which one they typed: Keycloak works it out,
+and a wrong guess locks somebody out of their own account.
+
+It matters most for landlords and renters, who often know their number by heart and
+check their email monthly. Not everyone has one: an account created without a phone
+signs in with its email, as before.
+
+The number is stored in one normalised form - `+2250701020304` - whatever the person
+typed. Responses that carry a `phone` field return that form, and it is what to show
+back, because it is what they will have to type.
+
 ### Development users
 
-All six share the password `password`.
+All of them share the password `password`, and each can sign in either way.
 
-| User | Role | Sees |
-|---|---|---|
-| `agent-a` | AGENT | agency-a's houses, leases, invoices |
-| `admin-a` | AGENCY_ADMIN | the same, plus deleting houses and setting commission |
-| `agent-b` | AGENT | agency-b - useful for proving isolation in the UI |
-| `landlord-one` | LANDLORD | their own portfolio and earnings |
-| `renter-one` | RENTER | their own invoices, and can pay them |
-| `platform-admin` | PLATFORM_ADMIN | deliberately nothing - see below |
+| Role | Phone | Email | Sees |
+|---|---|---|---|
+| AGENT | `+2250701000001` | `agent-a@agency-a.ci` | agency-a's houses, leases, invoices |
+| AGENCY_ADMIN | `+2250701000002` | `admin-a@agency-a.ci` | the same, plus deleting houses and setting commission |
+| AGENT | `+2250701000003` | `agent-b@agency-b.ci` | agency-b - useful for proving isolation in the UI |
+| LANDLORD | `+2250701000004` | `landlord@example.ci` | their own portfolio and earnings |
+| RENTER | `+2250701000005` | `renter@example.ci` | their own invoices, and can pay them |
+| PLATFORM_ADMIN | none | `platform-admin@houseagent.local` | deliberately nothing - see below |
+
+`platform-admin` has no number on purpose: a platform operator is a job rather than a
+person with a mobile, and it leaves one account in the realm proving that a phone is
+optional.
 
 ### Where accounts come from
 
@@ -110,6 +133,7 @@ await fetch(`${API}/api/signup`, {
     countryCode: "CI",               // 2-letter ISO, uppercase
     contactPhone: "+225 07 00 00 00 00",
     adminEmail: "akissi@cocody-lettings.ci",
+    adminPhone: "07 05 05 05 05",    // optional; lets them sign in with it
     firstName: "Akissi",
     lastName: "Kouame",
     password: "...",                 // theirs, minimum 8
@@ -192,6 +216,7 @@ claim - so it gets `403` from both the agency and the personal endpoints. If you
 |---|---|---|
 | `401` | No token, expired token, or an invalid one | Refresh, or send them back to login |
 | `409` on signup | The email already has an account | Say "sign in instead", not "taken" |
+| `400 INVALID_PHONE_NUMBER` | The number cannot be dialled | Show it against the phone field, not as a form-wide error |
 | `403` | Authenticated, but the wrong role - or the right role without the claim | Do not retry. Hide the control that produced it |
 | `404` | Not found **or** belongs to another agency | Treat as not found. Do not say "no permission" |
 | `409` | The request was valid but the world moved | Re-read and show the user what changed |

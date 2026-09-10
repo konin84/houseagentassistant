@@ -56,10 +56,16 @@ public class InMemoryUserDirectory implements UserDirectory {
 
     /** Lets a test arrange somebody who already exists, as a second agency would find. */
     public PlatformUser seed(String email, String role, String agencyId, String partyId) {
+        return seed(email, role, agencyId, partyId, null);
+    }
+
+    /** The same, for somebody who already holds a phone number. */
+    public PlatformUser seed(String email, String role, String agencyId, String partyId,
+                             String phone) {
         String id = UUID.randomUUID().toString();
         PlatformUser user = new PlatformUser(
-                id, email, email, "Seeded", "User",
-                new HashSet<>(Set.of(role)), agencyId, partyId, true);
+                id, phone != null ? phone : email, email, "Seeded", "User",
+                new HashSet<>(Set.of(role)), agencyId, partyId, phone, true);
         byId.put(id, user);
         return user;
     }
@@ -74,6 +80,13 @@ public class InMemoryUserDirectory implements UserDirectory {
     public Optional<PlatformUser> findByEmail(String email) {
         return byId.values().stream()
                 .filter(u -> u.email().equalsIgnoreCase(email.trim()))
+                .findFirst();
+    }
+
+    @Override
+    public Optional<PlatformUser> findByPhone(String phone) {
+        return byId.values().stream()
+                .filter(u -> phone.equals(u.phone()))
                 .findFirst();
     }
 
@@ -99,8 +112,11 @@ public class InMemoryUserDirectory implements UserDirectory {
 
         String id = UUID.randomUUID().toString();
         PlatformUser created = new PlatformUser(
-                id, user.email(), user.email(), user.firstName(), user.lastName(),
-                new HashSet<>(Set.of(user.role())), user.agencyId(), user.partyId(), true);
+                // Username mirrors the real directory: the number when there is one.
+                id, user.phone() != null ? user.phone() : user.email(), user.email(),
+                user.firstName(), user.lastName(),
+                new HashSet<>(Set.of(user.role())), user.agencyId(), user.partyId(),
+                user.phone(), true);
         byId.put(id, created);
         return created;
     }
@@ -112,7 +128,7 @@ public class InMemoryUserDirectory implements UserDirectory {
             roles.add(role);
             return new PlatformUser(user.userId(), user.username(), user.email(),
                     user.firstName(), user.lastName(), roles, user.agencyId(),
-                    user.partyId(), user.enabled());
+                    user.partyId(), user.phone(), user.enabled());
         });
     }
 
@@ -120,6 +136,7 @@ public class InMemoryUserDirectory implements UserDirectory {
     public void setEnabled(String userId, boolean enabled) {
         byId.computeIfPresent(userId, (id, user) -> new PlatformUser(
                 user.userId(), user.username(), user.email(), user.firstName(),
-                user.lastName(), user.roles(), user.agencyId(), user.partyId(), enabled));
+                user.lastName(), user.roles(), user.agencyId(), user.partyId(),
+                user.phone(), enabled));
     }
 }

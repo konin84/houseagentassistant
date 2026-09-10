@@ -180,26 +180,45 @@ auth = folder(
     "Without Keycloak you can still use the `X-Dev-*` headers already on every request "
     "- but only while `{{accessToken}}` is empty, because a real token always wins.",
     [
-        token_request("Token - agent-a (AGENT, agency-a)", "agent-a",
-                      "The everyday agency user. agency_id=agency-a."),
-        token_request("Token - admin-a (AGENCY_ADMIN, agency-a)", "admin-a",
+        token_request("Token - agent-a (AGENT, agency-a)", "agent-a@agency-a.ci",
+                      "The everyday agency user. agency_id=agency-a.\n\n"
+                      "Their phone, +225 07 01 00 00 01, works here just as well - see "
+                      "the two by-phone requests below."),
+        token_request("Token - admin-a (AGENCY_ADMIN, agency-a)", "admin-a@agency-a.ci",
                       "Needed for deleting a house and for setting the settlement "
                       "policy - an AGENT gets 403 on both."),
-        token_request("Token - agent-b (AGENT, agency-b)", "agent-b",
+        token_request("Token - agent-b (AGENT, agency-b)", "agent-b@agency-b.ci",
                       "A second agency. Get this token, then re-run Get house from the "
                       "property folder: 404, because it belongs to agency-a. That is "
                       "tenant isolation with a real token rather than an edited header."),
-        token_request("Token - landlord-one (LANDLORD)", "landlord-one",
+        token_request("Token - landlord-one (LANDLORD)", "landlord@example.ci",
                       "party_id 11111111-1111-1111-1111-111111111111, matching "
                       "{{landlordId}}, so the portfolio and earnings folders return the "
                       "leases created by the agency folders."),
-        token_request("Token - renter-one (RENTER)", "renter-one",
+        token_request("Token - renter-one (RENTER)", "renter@example.ci",
                       "party_id 22222222-2222-2222-2222-222222222222, matching "
                       "{{renterId}}."),
+        token_request("Token - landlord-one BY PHONE", "+2250701000004",
+                      "The same landlord, the same token, a different thing typed.\n\n"
+                      "This is what the feature is for: somebody who deals in houses and "
+                      "cash knows their number by heart and may check their email "
+                      "monthly. It works because the number is their Keycloak *username* "
+                      "- Keycloak accepts a username or an email, so they get both.\n\n"
+                      "**Sending a + in a form body is the trap here.** In "
+                      "application/x-www-form-urlencoded, a raw + means a space, so an "
+                      "unencoded number arrives as ' 2250701000004' and answers 401. It "
+                      "must be sent as %2B. Postman does this for you; curl needs "
+                      "--data-urlencode."),
+        token_request("Token - renter-one BY PHONE", "+2250701000005",
+                      "The same again for a renter, who has the same phone habits as "
+                      "the landlord above."),
         token_request("Token - platform-admin (PLATFORM_ADMIN)", "platform-admin",
                       "Carries no agency_id and no party_id, so agency and personal "
                       "endpoints both refuse it. Useful for checking that a role alone "
-                      "is not enough."),
+                      "is not enough.\n\n"
+                      "The one seeded account with no phone number, so its username is "
+                      "still a handle. A platform operator is a job rather than a person "
+                      "with a mobile."),
         {
             "name": "Clear token (back to X-Dev-* headers)",
             "request": {
@@ -609,6 +628,7 @@ signup = folder(
                   # Timestamped so the folder is re-runnable. A fixed address answers
                   # 409 for the rest of the day, which reads like a broken request.
                   "adminEmail": "founder-{{$timestamp}}@cocody-lettings.ci",
+                  "adminPhone": "+225 01 {{$randomInt}} {{$randomInt}} 00",
                   "firstName": "Akissi",
                   "lastName": "Kouame",
                   "password": "choose-your-own"}),
@@ -654,7 +674,8 @@ platform = folder(
             "logging in with the temporary one answers 'Account is not fully set up'.",
             role=PLATFORM, agency=False,
             body={"email": "admin@cocody-lettings.ci",
-                  "firstName": "Akissi", "lastName": "Admin"}),
+                  "firstName": "Akissi", "lastName": "Admin",
+                  "phone": "+225 07 05 05 05 05"}),
         req("Change the plan", "PUT",
             url(AGENCY_URL, ["api", "platform", "agencies", "{{newAgencyId}}", "plan"]),
             "FREE (5 houses), STARTER (25), PROFESSIONAL (100) or ENTERPRISE "
@@ -706,7 +727,7 @@ agency_admin = folder(
             "email belongs to one account - and every request after it has no user id "
             "to work with. Drop the timestamp to see that refusal deliberately.",
             role=ADMIN, capture=("staffUserId", "body.user.userId"),
-            body={"email": "new.agent+{{$timestamp}}@agency-a.ci",
+            body={"phone": "+225 07 {{$randomInt}} {{$randomInt}} 00", "email": "new.agent+{{$timestamp}}@agency-a.ci",
                   "firstName": "Kofi", "lastName": "Agent"}),
         req("List staff", "GET", url(AGENCY_URL, ["api", "agency", "staff"]),
             "Read from Keycloak rather than a local roster, so it cannot drift from who "
@@ -725,7 +746,7 @@ agency_admin = folder(
             "already have one. A landlord placing houses with two agencies is one person "
             "with one portfolio, and a second partyId would silently split it in half.",
             role=ADMIN, capture=("landlordPartyId", "body.user.partyId"),
-            body={"email": "new.landlord@example.ci",
+            body={"phone": "07 20 30 40 50", "email": "new.landlord@example.ci",
                   "firstName": "Yao", "lastName": "Kouame"}),
         req("Onboard a renter", "POST", url(AGENCY_URL, ["api", "agency", "renters"]),
             "The same, returning the partyId to use as renterId on a lease.\n\n"
@@ -733,7 +754,7 @@ agency_admin = folder(
             "roles - renting a flat while letting out an inherited house is ordinary, "
             "and it is one person either way.",
             role=ADMIN, capture=("renterPartyId", "body.user.partyId"),
-            body={"email": "new.renter@example.ci",
+            body={"phone": "+225 07 60 70 80 90", "email": "new.renter@example.ci",
                   "firstName": "Ama", "lastName": "Kouassi"}),
     ])
 

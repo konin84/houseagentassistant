@@ -196,7 +196,7 @@
                 },
                 {
                   "key": "username",
-                  "value": "agent-a"
+                  "value": "agent-a@agency-a.ci"
                 },
                 {
                   "key": "password",
@@ -217,7 +217,7 @@
                 "token"
               ]
             },
-            "description": "The everyday agency user. agency_id=agency-a."
+            "description": "The everyday agency user. agency_id=agency-a.\n\nTheir phone, +225 07 01 00 00 01, works here just as well - see the two by-phone requests below."
           },
           "event": [
             {
@@ -277,7 +277,7 @@
                 },
                 {
                   "key": "username",
-                  "value": "admin-a"
+                  "value": "admin-a@agency-a.ci"
                 },
                 {
                   "key": "password",
@@ -358,7 +358,7 @@
                 },
                 {
                   "key": "username",
-                  "value": "agent-b"
+                  "value": "agent-b@agency-b.ci"
                 },
                 {
                   "key": "password",
@@ -439,7 +439,7 @@
                 },
                 {
                   "key": "username",
-                  "value": "landlord-one"
+                  "value": "landlord@example.ci"
                 },
                 {
                   "key": "password",
@@ -520,7 +520,7 @@
                 },
                 {
                   "key": "username",
-                  "value": "renter-one"
+                  "value": "renter@example.ci"
                 },
                 {
                   "key": "password",
@@ -542,6 +542,168 @@
               ]
             },
             "description": "party_id 22222222-2222-2222-2222-222222222222, matching {{renterId}}."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Stores the token so every other request in the collection uses it.",
+                  "if (pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "    pm.collectionVariables.set('accessToken', body.access_token);",
+                  "",
+                  "    // Print the two claims the platform authorises on, because a",
+                  "    // token that is valid but missing them fails in a way that looks",
+                  "    // like a permissions bug rather than a realm misconfiguration.",
+                  "    const claims = JSON.parse(",
+                  "        Buffer.from(body.access_token.split('.')[1], 'base64').toString());",
+                  "    console.log('roles     ', (claims.realm_access || {}).roles);",
+                  "    console.log('agency_id ', claims.agency_id);",
+                  "    console.log('party_id  ', claims.party_id);",
+                  "} else {",
+                  "    console.log('Token request failed. Is Keycloak running?',",
+                  "                pm.response.code, pm.response.text());",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Token - landlord-one BY PHONE",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "password"
+                },
+                {
+                  "key": "client_id",
+                  "value": "{{keycloakClientId}}"
+                },
+                {
+                  "key": "client_secret",
+                  "value": "{{keycloakClientSecret}}"
+                },
+                {
+                  "key": "username",
+                  "value": "+2250701000004"
+                },
+                {
+                  "key": "password",
+                  "value": "{{keycloakPassword}}"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{keycloakUrl}}/realms/houseagent/protocol/openid-connect/token",
+              "host": [
+                "{{keycloakUrl}}"
+              ],
+              "path": [
+                "realms",
+                "houseagent",
+                "protocol",
+                "openid-connect",
+                "token"
+              ]
+            },
+            "description": "The same landlord, the same token, a different thing typed.\n\nThis is what the feature is for: somebody who deals in houses and cash knows their number by heart and may check their email monthly. It works because the number is their Keycloak *username* - Keycloak accepts a username or an email, so they get both.\n\n**Sending a + in a form body is the trap here.** In application/x-www-form-urlencoded, a raw + means a space, so an unencoded number arrives as ' 2250701000004' and answers 401. It must be sent as %2B. Postman does this for you; curl needs --data-urlencode."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Stores the token so every other request in the collection uses it.",
+                  "if (pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "    pm.collectionVariables.set('accessToken', body.access_token);",
+                  "",
+                  "    // Print the two claims the platform authorises on, because a",
+                  "    // token that is valid but missing them fails in a way that looks",
+                  "    // like a permissions bug rather than a realm misconfiguration.",
+                  "    const claims = JSON.parse(",
+                  "        Buffer.from(body.access_token.split('.')[1], 'base64').toString());",
+                  "    console.log('roles     ', (claims.realm_access || {}).roles);",
+                  "    console.log('agency_id ', claims.agency_id);",
+                  "    console.log('party_id  ', claims.party_id);",
+                  "} else {",
+                  "    console.log('Token request failed. Is Keycloak running?',",
+                  "                pm.response.code, pm.response.text());",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Token - renter-one BY PHONE",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "password"
+                },
+                {
+                  "key": "client_id",
+                  "value": "{{keycloakClientId}}"
+                },
+                {
+                  "key": "client_secret",
+                  "value": "{{keycloakClientSecret}}"
+                },
+                {
+                  "key": "username",
+                  "value": "+2250701000005"
+                },
+                {
+                  "key": "password",
+                  "value": "{{keycloakPassword}}"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{keycloakUrl}}/realms/houseagent/protocol/openid-connect/token",
+              "host": [
+                "{{keycloakUrl}}"
+              ],
+              "path": [
+                "realms",
+                "houseagent",
+                "protocol",
+                "openid-connect",
+                "token"
+              ]
+            },
+            "description": "The same again for a renter, who has the same phone habits as the landlord above."
           },
           "event": [
             {
@@ -622,7 +784,7 @@
                 "token"
               ]
             },
-            "description": "Carries no agency_id and no party_id, so agency and personal endpoints both refuse it. Useful for checking that a role alone is not enough."
+            "description": "Carries no agency_id and no party_id, so agency and personal endpoints both refuse it. Useful for checking that a role alone is not enough.\n\nThe one seeded account with no phone number, so its username is still a handle. A platform operator is a job rather than a person with a mobile."
           },
           "event": [
             {
@@ -2445,7 +2607,7 @@
                 },
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"agencyName\": \"Cocody Lettings\",\n  \"city\": \"Abidjan\",\n  \"countryCode\": \"CI\",\n  \"contactPhone\": \"+225 07 00 00 00 00\",\n  \"adminEmail\": \"founder-{{$timestamp}}@cocody-lettings.ci\",\n  \"firstName\": \"Akissi\",\n  \"lastName\": \"Kouame\",\n  \"password\": \"choose-your-own\"\n}",
+                  "raw": "{\n  \"agencyName\": \"Cocody Lettings\",\n  \"city\": \"Abidjan\",\n  \"countryCode\": \"CI\",\n  \"contactPhone\": \"+225 07 00 00 00 00\",\n  \"adminEmail\": \"founder-{{$timestamp}}@cocody-lettings.ci\",\n  \"adminPhone\": \"+225 01 {{$randomInt}} {{$randomInt}} 00\",\n  \"firstName\": \"Akissi\",\n  \"lastName\": \"Kouame\",\n  \"password\": \"choose-your-own\"\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -2648,7 +2810,7 @@
                 "description": "Creates an AGENCY_ADMIN inside that agency and returns a one-time password. The account cannot be used until the person sets their own - logging in with the temporary one answers 'Account is not fully set up'.",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"email\": \"admin@cocody-lettings.ci\",\n  \"firstName\": \"Akissi\",\n  \"lastName\": \"Admin\"\n}",
+                  "raw": "{\n  \"email\": \"admin@cocody-lettings.ci\",\n  \"firstName\": \"Akissi\",\n  \"lastName\": \"Admin\",\n  \"phone\": \"+225 07 05 05 05 05\"\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -2864,7 +3026,7 @@
                 "description": "Only AGENT. An admin cannot create another admin - a role able to grant itself stops being a boundary, because one compromised account becomes as many as somebody likes. A second admin is a platform-admin operation.\n\nReturns a one-time password, shown once and never again.\n\nThe address carries `{{$timestamp}}` so the folder can be run more than once. With a fixed one the second run answers 409 - correctly, since an email belongs to one account - and every request after it has no user id to work with. Drop the timestamp to see that refusal deliberately.",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"email\": \"new.agent+{{$timestamp}}@agency-a.ci\",\n  \"firstName\": \"Kofi\",\n  \"lastName\": \"Agent\"\n}",
+                  "raw": "{\n  \"phone\": \"+225 07 {{$randomInt}} {{$randomInt}} 00\",\n  \"email\": \"new.agent+{{$timestamp}}@agency-a.ci\",\n  \"firstName\": \"Kofi\",\n  \"lastName\": \"Agent\"\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -2987,7 +3149,7 @@
                 "description": "Returns a partyId - that is what goes in landlordId when listing a house for them.\n\nIf the address already belongs to somebody this **links** rather than duplicating: 200 instead of 201, linked true, and no password because they already have one. A landlord placing houses with two agencies is one person with one portfolio, and a second partyId would silently split it in half.",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"email\": \"new.landlord@example.ci\",\n  \"firstName\": \"Yao\",\n  \"lastName\": \"Kouame\"\n}",
+                  "raw": "{\n  \"phone\": \"07 20 30 40 50\",\n  \"email\": \"new.landlord@example.ci\",\n  \"firstName\": \"Yao\",\n  \"lastName\": \"Kouame\"\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -3049,7 +3211,7 @@
                 "description": "The same, returning the partyId to use as renterId on a lease.\n\nSend the landlord's address here instead to watch one account gain both roles - renting a flat while letting out an inherited house is ordinary, and it is one person either way.",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"email\": \"new.renter@example.ci\",\n  \"firstName\": \"Ama\",\n  \"lastName\": \"Kouassi\"\n}",
+                  "raw": "{\n  \"phone\": \"+225 07 60 70 80 90\",\n  \"email\": \"new.renter@example.ci\",\n  \"firstName\": \"Ama\",\n  \"lastName\": \"Kouassi\"\n}",
                   "options": {
                     "raw": {
                       "language": "json"

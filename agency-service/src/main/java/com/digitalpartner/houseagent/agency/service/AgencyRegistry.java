@@ -46,6 +46,9 @@ public class AgencyRegistry {
     @Inject
     OutboxWriter outbox;
 
+    @Inject
+    PhoneIdentifiers phones;
+
     @Transactional
     public Agency register(String agencyId, String name, String city, String countryCode,
                            String contactEmail, String contactPhone) {
@@ -85,7 +88,7 @@ public class AgencyRegistry {
      * again - rather than an admin belonging to an agency that does not exist.
      */
     public Provisioned addFirstAdmin(String agencyId, String email, String firstName,
-                                     String lastName) {
+                                     String lastName, String phone) {
         if (find(agencyId) == null) {
             throw new AgencyNotFoundException(agencyId);
         }
@@ -93,9 +96,12 @@ public class AgencyRegistry {
             throw new AlreadyRegisteredException("That email address already belongs to an account");
         });
 
+        String number = phones.claim(phone);
+
         String temporary = passwords.generate();
         PlatformUser created = users.create(NewUser.provisioned(
-                email.trim(), firstName, lastName, Roles.AGENCY_ADMIN, agencyId, null, temporary));
+                email.trim(), firstName, lastName, Roles.AGENCY_ADMIN, agencyId, null,
+                number, temporary));
 
         LOG.infof("Agency %s given its first admin, %s", agencyId, email);
         return new Provisioned(created, temporary, false);

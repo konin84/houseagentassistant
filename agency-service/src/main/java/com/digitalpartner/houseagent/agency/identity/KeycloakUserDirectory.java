@@ -44,6 +44,9 @@ public class KeycloakUserDirectory implements UserDirectory {
     /** Keycloak's own name for it. Not an enum in the admin client. */
     private static final String VERIFY_EMAIL = "VERIFY_EMAIL";
 
+    /** Where the number lives alongside being the username. */
+    static final String PHONE_NUMBER = "phone_number";
+
     @Inject
     Keycloak keycloak;
 
@@ -59,6 +62,15 @@ public class KeycloakUserDirectory implements UserDirectory {
         // exact = true: a substring match would let one agency discover accounts by
         // typing a fragment, and would link the wrong person on a near miss.
         List<UserRepresentation> found = realm().users().searchByEmail(email.trim(), true);
+        return found.isEmpty() ? Optional.empty() : Optional.of(toPlatformUser(found.getFirst()));
+    }
+
+    @Override
+    public Optional<PlatformUser> findByPhone(String phone) {
+        // By username rather than by the attribute. The username is what Keycloak
+        // enforces uniqueness on, so it is the field that can actually answer "is this
+        // number taken" - an attribute search would miss a clash it cannot see.
+        List<UserRepresentation> found = realm().users().search(phone.trim(), true);
         return found.isEmpty() ? Optional.empty() : Optional.of(toPlatformUser(found.getFirst()));
     }
 
@@ -84,9 +96,18 @@ public class KeycloakUserDirectory implements UserDirectory {
     @Override
     public PlatformUser create(NewUser user) {
         UserRepresentation representation = new UserRepresentation();
-        // Username is the email. One less thing for a person to remember, and it makes
-        // "already exists" mean the same thing on both fields.
-        representation.setUsername(user.email());
+        // The username is the phone number when there is one, and the email otherwise.
+        //
+        // This is the whole mechanism behind signing in with a phone. Keycloak accepts a
+        // username or an email at the login form, so making the number the username
+        // gives a person both, with stock Keycloak and no custom provider to build,
+        // package and keep working across upgrades.
+        //
+        // It matters most for the people it was asked for. A landlord who deals in
+        // houses and cash has a phone number they know by heart and an email address
+        // they may check monthly, and asking them to remember which of the two the
+        // platform wanted is how you lose them at the login screen.
+        representation.setUsername(user.phone() != null ? user.phone() : user.email());
         representation.setEmail(user.email());
         representation.setFirstName(user.firstName());
         representation.setLastName(user.lastName());
@@ -111,6 +132,13 @@ public class KeycloakUserDirectory implements UserDirectory {
         }
         if (user.partyId() != null) {
             attributes.put(TokenClaims.PARTY_ID, List.of(user.partyId()));
+        }
+        if (user.phone() != null) {
+            // Stored as well as being the username, so that reading somebody's number
+            // does not mean knowing that this platform happens to log people in by it.
+            // The day a Keycloak upgrade offers a better mechanism, this attribute is
+            // what makes swapping to it a migration rather than a data recovery.
+            attributes.put(PHONE_NUMBER, List.of(user.phone()));
         }
         representation.setAttributes(attributes);
 
@@ -227,6 +255,7 @@ public class KeycloakUserDirectory implements UserDirectory {
                 roles,
                 firstAttribute(representation, TokenClaims.AGENCY_ID),
                 firstAttribute(representation, TokenClaims.PARTY_ID),
+                firstAttribute(representation, PHONE_NUMBER),
                 representation.isEnabled() != null && representation.isEnabled());
     }
 

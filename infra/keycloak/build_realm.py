@@ -107,6 +107,11 @@ USER_PROFILE = {
         },
         profile_attribute("agency_id", "Agency", 64),
         profile_attribute("party_id", "Party", 64),
+        # Declared for the same reason as the two above - Keycloak discards attributes
+        # the profile does not know about. This one is a copy of the username for
+        # anybody who signs in by phone, kept so that reading somebody's number does not
+        # require knowing that this platform logs people in by it.
+        profile_attribute("phone_number", "Phone number", 40),
     ],
     "groups": [
         {"name": "user-metadata", "displayHeader": "User metadata",
@@ -118,19 +123,32 @@ USER_PROFILE = {
 }
 
 
-def user(username, roles, agency=None, party=None, first="", last="", email=None):
+def user(handle, roles, agency=None, party=None, first="", last="", email=None,
+         phone=None):
+    """A seeded person.
+
+    The username is their phone number when they have one, which is what makes signing
+    in with it work - Keycloak accepts a username or an email at the login form, and
+    nothing else about a stock realm can be logged in by. The handle is kept for the
+    default email address and for reading this file.
+
+    These fixtures therefore look like accounts the platform creates, rather than like
+    a special case that quietly proves nothing.
+    """
     attributes = {}
     if agency:
         attributes["agency_id"] = [agency]
     if party:
         attributes["party_id"] = [party]
+    if phone:
+        attributes["phone_number"] = [phone]
     return {
-        "username": username,
+        "username": phone or handle,
         "enabled": True,
         "emailVerified": True,
         "firstName": first,
         "lastName": last,
-        "email": email or (username + "@houseagent.local"),
+        "email": email or (handle + "@houseagent.local"),
         "credentials": [{"type": "password", "value": "password", "temporary": False}],
         "realmRoles": roles,
         "attributes": attributes,
@@ -319,17 +337,27 @@ realm = {
 
     "users": [
         user("agent-a", ["AGENT"], agency="agency-a",
-             first="Adjoua", last="Agent", email="agent-a@agency-a.ci"),
+             first="Adjoua", last="Agent", email="agent-a@agency-a.ci",
+             phone="+2250701000001"),
         user("admin-a", ["AGENCY_ADMIN", "AGENT"], agency="agency-a",
-             first="Akissi", last="Admin", email="admin-a@agency-a.ci"),
+             first="Akissi", last="Admin", email="admin-a@agency-a.ci",
+             phone="+2250701000002"),
         # A second agency, so isolation can be demonstrated with a real token rather
         # than by editing a header.
         user("agent-b", ["AGENT"], agency="agency-b",
-             first="Yao", last="Agent", email="agent-b@agency-b.ci"),
+             first="Yao", last="Agent", email="agent-b@agency-b.ci",
+             phone="+2250701000003"),
+        # The two this was built for. A landlord knows their number by heart and may
+        # check their email monthly.
         user("landlord-one", ["LANDLORD"], party=LANDLORD_PARTY,
-             first="Kouassi", last="Konan", email="landlord@example.ci"),
+             first="Kouassi", last="Konan", email="landlord@example.ci",
+             phone="+2250701000004"),
         user("renter-one", ["RENTER"], party=RENTER_PARTY,
-             first="Ama", last="Kouassi", email="renter@example.ci"),
+             first="Ama", last="Kouassi", email="renter@example.ci",
+             phone="+2250701000005"),
+        # No number, deliberately. A platform operator is a job rather than a person
+        # with a mobile, and leaving one off keeps a case in the realm where the
+        # username is still the handle.
         user("platform-admin", ["PLATFORM_ADMIN"],
              first="Platform", last="Admin"),
         {

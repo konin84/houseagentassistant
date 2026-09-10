@@ -44,6 +44,9 @@ public class PartyDirectory {
     @Inject
     TemporaryPasswords passwords;
 
+    @Inject
+    PhoneIdentifiers phones;
+
     /**
      * Finds the person, or creates them.
      *
@@ -51,7 +54,7 @@ public class PartyDirectory {
      *         as {@code landlordId} on a house or {@code renterId} on a lease
      */
     public Provisioned onboard(String agencyId, String email, String firstName,
-                               String lastName, String role) {
+                               String lastName, String phone, String role) {
         if (!ONBOARDABLE.contains(role)) {
             throw new RoleNotGrantableException(
                     "Only " + String.join(" and ", ONBOARDABLE) + " can be onboarded here; "
@@ -63,6 +66,10 @@ public class PartyDirectory {
             return link(agencyId, existing.get(), role);
         }
 
+        // After the link check above, so onboarding somebody who already exists never
+        // fails on a number they registered themselves with last year.
+        String number = phones.claim(phone);
+
         String temporary = passwords.generate();
         PlatformUser created = users.create(NewUser.provisioned(
                 email.trim(), firstName, lastName, role,
@@ -71,6 +78,7 @@ public class PartyDirectory {
                 // from them the moment they dealt with a second agency.
                 null,
                 UUID.randomUUID().toString(),
+                number,
                 temporary));
 
         LOG.infof("Agency %s onboarded new %s %s", agencyId, role, email);

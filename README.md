@@ -68,6 +68,11 @@ All five validate bearer JWTs from the Keycloak realm in `infra/keycloak/`.
 `agency-service` is also the one that *creates* the accounts, through Keycloak's
 admin API - see [who creates whom](docs/user-guide.md#who-creates-whom).
 
+Everybody signs in with **a phone number or an email address**, whichever they find
+easier - the number is their Keycloak username, so both reach the same account with no
+custom identity provider to maintain. It is there for landlords, who know their number
+by heart and may check their email monthly.
+
 Two endpoints on the whole platform take no token: the public marketplace, and
 `POST /api/signup`. An agency starts itself there, on the free plan, because adding
 staff requires being an agency admin and being an agency admin requires an agency - so

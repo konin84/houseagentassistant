@@ -63,6 +63,12 @@ public final class AgencyDtos {
             @Size(max = 200) String firstName,
             @Size(max = 200) String lastName,
             /**
+             * The administrator's own number, which they can then sign in with.
+             * Distinct from contactPhone above, which is the agency's - they are often
+             * the same number and are not the same thing.
+             */
+            @Size(max = 40) String adminPhone,
+            /**
              * Eight is what the development realm's seeded accounts use, so the API and
              * the realm agree. A deployment should raise both together - the realm's
              * {@code passwordPolicy} is the one that cannot be bypassed, since it also
@@ -88,13 +94,41 @@ public final class AgencyDtos {
     public record CreateStaffRequest(
             @NotBlank @Email @Size(max = 320) String email,
             @Size(max = 200) String firstName,
-            @Size(max = 200) String lastName) {
+            @Size(max = 200) String lastName,
+            /**
+             * Optional, and the reason this record changed.
+             *
+             * <p>Given one, the person can sign in with it instead of their email. A
+             * landlord who deals in houses and cash knows their number by heart and may
+             * check their email monthly; making them use the address is how you lose
+             * them at the login screen.
+             *
+             * <p>Any format a person would write: {@code 07 00 00 00 00},
+             * {@code +225 07-00-00-00-00}, {@code 00225 0700000000}. It is reduced to
+             * one form on the way in, because the number is a login identifier and two
+             * spellings of it would mean an account somebody cannot sign in to.
+             */
+            @Size(max = 40) String phone) {
     }
 
     public record OnboardPartyRequest(
             @NotBlank @Email @Size(max = 320) String email,
             @Size(max = 200) String firstName,
-            @Size(max = 200) String lastName) {
+            @Size(max = 200) String lastName,
+            /**
+             * Optional, and the reason this record changed.
+             *
+             * <p>Given one, the person can sign in with it instead of their email. A
+             * landlord who deals in houses and cash knows their number by heart and may
+             * check their email monthly; making them use the address is how you lose
+             * them at the login screen.
+             *
+             * <p>Any format a person would write: {@code 07 00 00 00 00},
+             * {@code +225 07-00-00-00-00}, {@code 00225 0700000000}. It is reduced to
+             * one form on the way in, because the number is a login identifier and two
+             * spellings of it would mean an account somebody cannot sign in to.
+             */
+            @Size(max = 40) String phone) {
     }
 
     // --------------------------------------------------------------- responses
@@ -163,12 +197,18 @@ public final class AgencyDtos {
             String agencyId,
             /** What to use as landlordId on a house, or renterId on a lease. */
             String partyId,
+            /**
+             * Normalised, or null if they gave none. Show this back rather than what was
+             * typed - it is what they will have to enter to sign in.
+             */
+            String phone,
             boolean enabled) {
 
         public static UserResponse from(PlatformUser user) {
             return new UserResponse(
                     user.userId(), user.email(), user.firstName(), user.lastName(),
-                    user.roles(), user.agencyId(), user.partyId(), user.enabled());
+                    user.roles(), user.agencyId(), user.partyId(), user.phone(),
+                    user.enabled());
         }
     }
 

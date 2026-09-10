@@ -90,7 +90,7 @@ public class AgencyAdminResource {
     public Response addStaff(@Valid CreateStaffRequest request) {
         var provisioned = staff.addStaff(
                 caller.requireAgencyId(), request.email(),
-                request.firstName(), request.lastName(), Roles.AGENT);
+                request.firstName(), request.lastName(), request.phone(), Roles.AGENT);
         return Response.status(Response.Status.CREATED)
                 .entity(ProvisionedResponse.from(provisioned))
                 .build();
@@ -133,7 +133,7 @@ public class AgencyAdminResource {
     public Response onboardLandlord(@Valid OnboardPartyRequest request) {
         var provisioned = parties.onboard(
                 caller.requireAgencyId(), request.email(),
-                request.firstName(), request.lastName(), Roles.LANDLORD);
+                request.firstName(), request.lastName(), request.phone(), Roles.LANDLORD);
         return Response.status(provisioned.linked() ? Response.Status.OK : Response.Status.CREATED)
                 .entity(ProvisionedResponse.from(provisioned))
                 .build();
@@ -148,7 +148,7 @@ public class AgencyAdminResource {
     public Response onboardRenter(@Valid OnboardPartyRequest request) {
         var provisioned = parties.onboard(
                 caller.requireAgencyId(), request.email(),
-                request.firstName(), request.lastName(), Roles.RENTER);
+                request.firstName(), request.lastName(), request.phone(), Roles.RENTER);
         return Response.status(provisioned.linked() ? Response.Status.OK : Response.Status.CREATED)
                 .entity(ProvisionedResponse.from(provisioned))
                 .build();

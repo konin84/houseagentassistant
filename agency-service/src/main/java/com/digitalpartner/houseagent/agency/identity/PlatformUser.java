@@ -10,6 +10,9 @@ import java.util.Set;
  *                 before this platform will treat somebody as either.
  * @param partyId  their platform-wide id, or null for staff. This is what a lease and
  *                 an invoice point at.
+ * @param phone    normalised, or null if they gave none. When present it is also their
+ *                 {@code username}, which is what makes signing in with it work - see
+ *                 {@code KeycloakUserDirectory}.
  */
 public record PlatformUser(
         String userId,
@@ -20,6 +23,7 @@ public record PlatformUser(
         Set<String> roles,
         String agencyId,
         String partyId,
+        String phone,
         boolean enabled) {
 
     public boolean isAgencyStaff() {

@@ -25,6 +25,34 @@ that a screen will eventually make.
 An agent belongs to exactly one agency. Landlords and renters belong to none: a landlord
 may place one house with agency A and another with agency B, and sees both in one list.
 
+### Everybody signs in with a phone number or an email
+
+Whichever they find easier. Both reach the same account, and there is no setting to
+change - the number is simply the person's username, and Keycloak accepts a username or
+an email.
+
+This exists for landlords, who deal in houses and cash, know their number by heart and
+may check their email monthly. Asking them to remember which of the two the platform
+wanted is how you lose somebody at the login screen. Agents and renters get it for the
+same reason: there is no version of this that is easier to explain if only some people
+have it.
+
+A number is optional, and is given when the account is created - `phone` on the staff,
+landlord and renter requests, `adminPhone` on signup. Anything a person would actually
+write is accepted:
+
+```
+07 00 00 00 00      +225 07-00-00-00-00      (+225) 0700000000      00225 07 00 00 00 00
+```
+
+All four are stored as `+2250700000000`, because a number written two ways would be two
+accounts - and the second person to arrive would be told their own phone belongs to
+somebody else. Two accounts may not share one, exactly as with an email.
+
+Local numbers are assumed to be Ivorian; elsewhere, enter the full `+` form. A number
+that could not be dialled is refused as `400 INVALID_PHONE_NUMBER` rather than stored,
+since storing it would create an account nobody can sign in to.
+
 ### Who creates whom
 
 An agency starts itself. Everybody else is created by somebody one level out:

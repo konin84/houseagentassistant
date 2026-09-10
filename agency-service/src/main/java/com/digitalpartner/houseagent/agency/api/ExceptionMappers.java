@@ -1,6 +1,7 @@
 package com.digitalpartner.houseagent.agency.api;
 
 import com.digitalpartner.houseagent.agency.identity.DirectoryException;
+import com.digitalpartner.houseagent.agency.identity.InvalidPhoneNumberException;
 import com.digitalpartner.houseagent.agency.service.AgencyAlreadyExistsException;
 import com.digitalpartner.houseagent.agency.service.AgencyNotFoundException;
 import com.digitalpartner.houseagent.agency.service.AlreadyRegisteredException;
@@ -82,6 +83,20 @@ public class ExceptionMappers {
     public Response signupFailed(SignupFailedException e) {
         return Response.status(Response.Status.SERVICE_UNAVAILABLE)
                 .entity(ApiError.of("SIGNUP_FAILED", e.getMessage()))
+                .build();
+    }
+
+    /**
+     * 400: the number cannot be dialled, so it cannot be signed in with either.
+     *
+     * <p>Its own code rather than VALIDATION_FAILED, because the check happens after
+     * normalisation - '07-00-00-00-00' is fine and '0700' is not, which no pattern over
+     * the raw input expresses. A client should show it against the phone field.
+     */
+    @ServerExceptionMapper
+    public Response invalidPhone(InvalidPhoneNumberException e) {
+        return Response.status(Response.Status.BAD_REQUEST)
+                .entity(ApiError.of("INVALID_PHONE_NUMBER", e.getMessage()))
                 .build();
     }
 

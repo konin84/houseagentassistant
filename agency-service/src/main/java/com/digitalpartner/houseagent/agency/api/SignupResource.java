@@ -48,7 +48,7 @@ public class SignupResource {
         var result = signup.signUp(
                 request.agencyName(), request.city(), request.countryCode(),
                 request.contactPhone(), request.adminEmail(), request.password(),
-                request.firstName(), request.lastName());
+                request.firstName(), request.lastName(), request.adminPhone());
 
         return Response.status(Response.Status.CREATED)
                 .entity(SignupResponse.from(result.agency(), result.administrator()))

@@ -76,7 +76,8 @@ public class PlatformAgencyResource {
     public Response addAdministrator(@PathParam("agencyId") String agencyId,
                                      @Valid CreateStaffRequest request) {
         var provisioned = agencies.addFirstAdmin(
-                agencyId, request.email(), request.firstName(), request.lastName());
+                agencyId, request.email(), request.firstName(), request.lastName(),
+                request.phone());
         return Response.status(Response.Status.CREATED)
                 .entity(ProvisionedResponse.from(provisioned))
                 .build();

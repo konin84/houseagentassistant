@@ -73,9 +73,12 @@ public class SelfSignup {
     @Inject
     UserDirectory users;
 
+    @Inject
+    PhoneIdentifiers phones;
+
     public SignedUp signUp(String agencyName, String city, String countryCode,
                            String contactPhone, String email, String password,
-                           String firstName, String lastName) {
+                           String firstName, String lastName, String adminPhone) {
 
         String address = email.trim();
 
@@ -87,6 +90,10 @@ public class SelfSignup {
                     "That email address already belongs to an account. Sign in instead.");
         });
 
+        // Both checks before anything is written, so a taken number cannot leave an
+        // agency behind the way a failed account creation would.
+        String number = phones.claim(adminPhone);
+
         Agency agency = registerUnderAFreeId(agencyName, city, countryCode, address,
                 contactPhone);
 
@@ -97,6 +104,7 @@ public class SelfSignup {
                     // Not a parameter, and not derived from anything the caller sent.
                     Roles.AGENCY_ADMIN,
                     agency.agencyId,
+                    number,
                     password));
         } catch (RuntimeException e) {
             // The agency exists and its administrator does not, which is an agency

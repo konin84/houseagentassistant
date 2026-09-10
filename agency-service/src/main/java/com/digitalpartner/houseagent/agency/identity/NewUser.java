@@ -24,6 +24,8 @@ public record NewUser(
         String role,
         String agencyId,
         String partyId,
+        /** Already normalised by the service. Becomes the username when present. */
+        String phone,
         String password,
         boolean mustChangePassword) {
 
@@ -61,15 +63,16 @@ public record NewUser(
     /** Provisioned by somebody else, so the credential is one-time. */
     public static NewUser provisioned(String email, String firstName, String lastName,
                                       String role, String agencyId, String partyId,
-                                      String temporaryPassword) {
-        return new NewUser(email, firstName, lastName, role, agencyId, partyId,
+                                      String phone, String temporaryPassword) {
+        return new NewUser(email, firstName, lastName, role, agencyId, partyId, phone,
                 temporaryPassword, true);
     }
 
     /** Signed up by the person themselves, who already knows their own password. */
     public static NewUser selfChosen(String email, String firstName, String lastName,
-                                     String role, String agencyId, String password) {
-        return new NewUser(email, firstName, lastName, role, agencyId, null,
+                                     String role, String agencyId, String phone,
+                                     String password) {
+        return new NewUser(email, firstName, lastName, role, agencyId, null, phone,
                 password, false);
     }
 }
