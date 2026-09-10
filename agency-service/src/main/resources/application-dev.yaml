@@ -19,6 +19,16 @@ quarkus:
   flyway:
     locations: db/migration,db/dev
 
+    # Required by the line above, not a relaxation of standards. The dev seed is V900
+    # so it always sorts last, which means every real migration added afterwards is
+    # "out of order" by definition - V2 arriving after V900 has run is the normal case
+    # here, not a mistake anybody made.
+    #
+    # Production runs db/migration alone, where versions only ever increase and this
+    # setting is absent. Turning it on there would let a migration merged from an old
+    # branch apply after the ones written since, against a schema its author never saw.
+    out-of-order: true
+
   oidc:
     enabled: true
     auth-server-url: ${OIDC_AUTH_SERVER_URL:http://localhost:8180/realms/houseagent}

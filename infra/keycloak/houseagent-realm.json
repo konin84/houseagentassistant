@@ -4,6 +4,7 @@
   "displayName": "houseagentassistant",
   "sslRequired": "none",
   "registrationAllowed": false,
+  "passwordPolicy": "length(8) and notUsername and notEmail",
   "loginWithEmailAllowed": true,
   "duplicateEmailsAllowed": false,
   "resetPasswordAllowed": false,

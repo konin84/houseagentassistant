@@ -145,7 +145,22 @@ realm = {
     # Development settings. sslRequired none because this runs on plain HTTP on a
     # laptop; a deployed realm must not do this.
     "sslRequired": "none",
+    # Off, and it stays off now that agencies sign themselves up. A user registered
+    # on Keycloak's own page would have no agency_id and no role - somebody holding a
+    # perfectly valid token that every endpoint on the platform refuses. An agency and
+    # its administrator only make sense created together, which is what POST /api/signup
+    # does and a login-page link cannot.
     "registrationAllowed": False,
+
+    # Enforced wherever a password is set: our signup endpoint, an admin reset, and the
+    # account console. The API validates the same minimum, but this is the one that
+    # cannot be bypassed by calling Keycloak directly.
+    #
+    # Eight because the seeded development accounts below use "password" and this realm
+    # exists to be easy to log into. A deployment should raise it - length(12) and
+    # notUsername and notEmail and passwordHistory(3) is a reasonable place to start -
+    # and change the seeds to match, or drop them entirely.
+    "passwordPolicy": "length(8) and notUsername and notEmail",
     "loginWithEmailAllowed": True,
     "duplicateEmailsAllowed": False,
     "resetPasswordAllowed": False,
