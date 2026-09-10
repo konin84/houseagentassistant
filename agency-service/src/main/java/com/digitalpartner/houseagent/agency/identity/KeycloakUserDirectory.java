@@ -41,6 +41,9 @@ public class KeycloakUserDirectory implements UserDirectory {
 
     private static final Logger LOG = Logger.getLogger(KeycloakUserDirectory.class);
 
+    /** Keycloak's own name for it. Not an enum in the admin client. */
+    private static final String VERIFY_EMAIL = "VERIFY_EMAIL";
+
     @Inject
     Keycloak keycloak;
 
@@ -92,6 +95,16 @@ public class KeycloakUserDirectory implements UserDirectory {
         // an agency onboarding a landlord, or a stranger signing up.
         representation.setEmailVerified(false);
 
+        // Agency admins have to prove it before they can sign in; everybody else does
+        // not - see NewUser.requiresEmailVerification for why the line is drawn there.
+        //
+        // Per user rather than the realm's own verifyEmail flag, which is all-or-
+        // nothing and would make a landlord check their mail before an agent standing
+        // next to them can finish onboarding them.
+        if (user.requiresEmailVerification()) {
+            representation.setRequiredActions(List.of(VERIFY_EMAIL));
+        }
+
         Map<String, List<String>> attributes = new java.util.HashMap<>();
         if (user.agencyId() != null) {
             attributes.put(TokenClaims.AGENCY_ID, List.of(user.agencyId()));
@@ -125,10 +138,35 @@ public class KeycloakUserDirectory implements UserDirectory {
         }
 
         grantRole(userId, user.role());
+        if (user.requiresEmailVerification()) {
+            sendVerificationEmail(userId, user.email());
+        }
         LOG.infof("Created %s %s (agency=%s)", user.role(), user.email(), user.agencyId());
 
         return findById(userId).orElseThrow(
                 () -> new DirectoryException("User " + userId + " vanished after creation"));
+    }
+
+    /**
+     * Asks Keycloak to mail the verification link now, rather than at first login.
+     *
+     * <p>Best effort, and deliberately so. The required action is already on the
+     * account, so somebody who never receives this can still verify by signing in -
+     * Keycloak prompts and sends it again. Failing the whole signup because a mail
+     * server was briefly unreachable would destroy an agency over something that fixes
+     * itself, and the caller has no way to retry without picking a different email.
+     *
+     * <p>It matters most for API clients. A browser gets the prompt at login anyway; a
+     * password grant just answers "Account is not fully set up" and no mail is ever
+     * sent, which is a dead end unless this ran.
+     */
+    private void sendVerificationEmail(String userId, String email) {
+        try {
+            realm().users().get(userId).executeActionsEmail(List.of(VERIFY_EMAIL));
+        } catch (RuntimeException e) {
+            LOG.warnf(e, "Could not send the verification email to %s. The account is "
+                    + "created and will prompt at first sign-in instead.", email);
+        }
     }
 
     /**

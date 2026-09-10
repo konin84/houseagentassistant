@@ -145,8 +145,10 @@ public final class AgencyDtos {
             return new SignupResponse(
                     AgencyResponse.from(agency),
                     UserResponse.from(administrator),
-                    "Sign in with the email and password you just chose. Your agency is "
-                            + "on the " + agency.plan + " plan, which allows "
+                    "Check your email and click the link to confirm the address, then "
+                            + "sign in with the password you just chose. Signing in "
+                            + "before that answers 'Account is not fully set up'. Your "
+                            + "agency is on the " + agency.plan + " plan, which allows "
                             + agency.plan.maxHouses() + " houses. Contact the platform "
                             + "to move to a larger one.");
         }

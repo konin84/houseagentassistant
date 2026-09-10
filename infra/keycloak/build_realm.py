@@ -161,6 +161,29 @@ realm = {
     # notUsername and notEmail and passwordHistory(3) is a reasonable place to start -
     # and change the seeds to match, or drop them entirely.
     "passwordPolicy": "length(8) and notUsername and notEmail",
+    # Where verification mail goes. Mailpit on the compose network, which accepts
+    # everything and delivers nothing - open http://localhost:8025 to read it.
+    #
+    # A deployment replaces this with a real relay. Note what happens if it is wrong:
+    # agency signup still succeeds and the account still prompts for verification at
+    # first sign-in, it just never receives the link it was promised. Worth an alert,
+    # because nothing in the API will fail.
+    "smtpServer": {
+        "host": "mailpit",
+        "port": "1025",
+        "from": "no-reply@houseagent.local",
+        "fromDisplayName": "houseagentassistant",
+        "ssl": "false",
+        "starttls": "false",
+        "auth": "false",
+    },
+
+    # Deliberately false, and it is not the same thing as the required action we put on
+    # agency admins. This flag is all-or-nothing: turning it on would make a landlord
+    # verify their address before an agent sitting with them could finish onboarding
+    # them, which buys nothing - somebody accountable just typed that address.
+    "verifyEmail": False,
+
     "loginWithEmailAllowed": True,
     "duplicateEmailsAllowed": False,
     "resetPasswordAllowed": False,

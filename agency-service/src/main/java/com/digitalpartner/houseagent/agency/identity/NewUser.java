@@ -1,5 +1,7 @@
 package com.digitalpartner.houseagent.agency.identity;
 
+import com.digitalpartner.houseagent.common.security.Roles;
+
 /**
  * A person to be created.
  *
@@ -24,6 +26,37 @@ public record NewUser(
         String partyId,
         String password,
         boolean mustChangePassword) {
+
+    /**
+     * Whether this person has to prove they own the address before they can sign in.
+     *
+     * <h2>Why only agency admins</h2>
+     *
+     * Verification is friction, and friction stops people using a platform. It is worth
+     * spending where an unproved address actually costs something, and nowhere else.
+     *
+     * <p>An agency admin is the one account created from an open, unauthenticated
+     * request. Nobody vouches for the address, which is what makes squatting possible:
+     * sign up as {@code contact@a-real-agency.example} and the real business finds its
+     * own name taken by somebody it has never met. It is also the most powerful account
+     * inside a tenancy - it hires staff and onboards the landlords and renters whose
+     * money moves through the platform.
+     *
+     * <p>Everybody else was typed in by somebody accountable. An agency admin sitting in
+     * their office adding an agent, a landlord or a renter has a relationship with that
+     * person; a wrong address there is a mistake to correct, not an attack. Making those
+     * three verify would mean an agency cannot onboard a landlord who is standing in
+     * front of them until that landlord goes home and checks their mail, which is a
+     * worse platform in exchange for a risk nobody was running.
+     *
+     * <p>Note this is a property of the <em>role</em> rather than of how the account was
+     * created, so the platform-admin path gets it too. One rule, in one place, that
+     * cannot drift between call sites - and an agency admin created on somebody's behalf
+     * is no less powerful than one who signed themselves up.
+     */
+    public boolean requiresEmailVerification() {
+        return Roles.AGENCY_ADMIN.equals(role);
+    }
 
     /** Provisioned by somebody else, so the credential is one-time. */
     public static NewUser provisioned(String email, String firstName, String lastName,

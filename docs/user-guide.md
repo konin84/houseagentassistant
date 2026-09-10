@@ -68,11 +68,37 @@ one request, every isolation rule defeated. So the id is derived: "Cocody Lettin
 becomes `cocody-lettings`, and a name already taken gets a numbered variant, because two
 real businesses may share a name and the tenancy scheme does not get to rule on that.
 
-**What signup does not yet do is prove the email address belongs to whoever typed it.**
-The account is created unverified and works anyway, so somebody can sign up as
-`contact@a-real-agency.example` and sit on it. Closing that needs a verification mail
-and SMTP in the realm. Until then it is a rate limit at the gateway, and the fact that
-an unverified agency can reach nobody: it has no landlords, no renters, no houses.
+**The account cannot be used until the address is proved.** Keycloak mails a link, and
+signing in before clicking it answers `Account is not fully set up`. That is what stops
+somebody signing up as `contact@a-real-agency.example` and holding a real business's
+name: they can create the row, and they can never use it.
+
+In development the mail goes to Mailpit - read it at <http://localhost:8025>.
+
+### Only agency admins verify
+
+Nobody else on the platform does, and that is the design rather than an oversight:
+
+| Who | Verifies | Because |
+|---|---|---|
+| Agency admin | **yes** | The only account created from an open request. Nobody vouched for the address |
+| Agent | no | An agency admin who knows them typed it in |
+| Landlord, renter | no | Same, and they are often sitting in the office while it happens |
+
+Verification is friction, and friction is worth spending where an unproved address costs
+something. Requiring it of a landlord would mean an agency cannot finish onboarding
+somebody standing in front of them until that person goes home and checks their mail -
+a worse platform in exchange for a risk nobody was running. A wrong address there is a
+mistake to correct, not an attack.
+
+It follows the **role**, not the signup path: an agency admin created by a platform
+admin verifies too. One rule in one place, and an admin created on somebody's behalf is
+no less powerful than one who signed themselves up. They get a verification mail *and* a
+one-time password, so they do both.
+
+What is still rough: an unverified signup holds its agency id and may never come back.
+Nothing reclaims those yet, and doing it needs an answer to how long is long enough
+before deleting somebody's agency.
 
 Keycloak's own registration page stays switched off, which is not a contradiction. A
 user registered there would have no `agency_id` and no role - somebody holding a
@@ -504,6 +530,7 @@ Worth trying, because refusals are most of the design:
 | An agency admin naming another agency when adding staff | Ignored; the token decides |
 | An agency admin changing their own plan | `403` - platform work, since there is no payment behind it |
 | Signing up with an address that already has an account | `409` - sign in instead |
+| Signing in as a new agency admin before clicking the link | `Account is not fully set up` |
 | Signing up naming a plan, a role or an agencyId | Ignored; all three are decided by the service |
 | A sixth house on the free plan | `402`, with how many of how many |
 | `platform-admin` on any agency endpoint | `403` - a real role, but no agency, and a role alone is not enough |

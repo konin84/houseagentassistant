@@ -5,6 +5,16 @@
   "sslRequired": "none",
   "registrationAllowed": false,
   "passwordPolicy": "length(8) and notUsername and notEmail",
+  "smtpServer": {
+    "host": "mailpit",
+    "port": "1025",
+    "from": "no-reply@houseagent.local",
+    "fromDisplayName": "houseagentassistant",
+    "ssl": "false",
+    "starttls": "false",
+    "auth": "false"
+  },
+  "verifyEmail": false,
   "loginWithEmailAllowed": true,
   "duplicateEmailsAllowed": false,
   "resetPasswordAllowed": false,

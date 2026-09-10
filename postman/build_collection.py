@@ -574,13 +574,25 @@ signup = folder(
     "plan, the role, and the agencyId. Add them to the body and watch nothing change - "
     "each is chosen by the service, because each is a field an attacker would fill in. "
     "The agencyId in particular is the value every other service filters data by; it is "
-    "derived from the name you give rather than accepted from you.",
+    "derived from the name you give rather than accepted from you.\n\n"
+    "**This folder needs Mailpit.** A new agency admin must confirm their email address "
+    "before they can sign in, and the confirmation link arrives by mail. "
+    "`docker compose up -d mailpit`, then read it at http://localhost:8025.",
     [
         req("Sign up an agency", "POST", url(AGENCY_URL, ["api", "signup"]),
             "No Authorization header, and none needed.\n\n"
-            "The password is yours: unlike a provisioned account, nothing comes back "
-            "that you then have to change. Sign in with it straight away using the "
-            "Authentication folder - swap the username for the email you used here.\n\n"
+            "**The account does not work until the email address is confirmed.** "
+            "Keycloak mails a link; asking for a token before it is clicked answers "
+            "`invalid_grant - Account is not fully set up`, which is the system working "
+            "rather than a broken request.\n\n"
+            "In development the mail goes to Mailpit. Open http://localhost:8025, click "
+            "the link in the message, then get a token from the Authentication folder "
+            "with the email and password you used here.\n\n"
+            "Agency admins are the only people on the platform who verify - an agent or "
+            "a landlord created by an admin signs in straight away. The address on those "
+            "was typed by somebody accountable; this one was typed by a stranger.\n\n"
+            "The password is yours, so unlike a provisioned account nothing comes back "
+            "that you then have to change.\n\n"
             "The agencyId in the response is derived from agencyName. "
             "'Cocody Lettings' becomes 'cocody-lettings'; a name already taken gets a "
             "numbered variant, because two real businesses may share a name and the "
@@ -600,10 +612,11 @@ signup = folder(
                   "firstName": "Akissi",
                   "lastName": "Kouame",
                   "password": "choose-your-own"}),
-        req("My agency, straight after signing up", "GET",
+        req("My agency, once the email is confirmed", "GET",
             url(AGENCY_URL, ["api", "agency", "profile"]),
-            "Get a token for the account you just made first - Authentication folder, "
-            "with your new email and password - or this answers 401.\n\n"
+            "Confirm the address in Mailpit and get a token for the new account first - "
+            "Authentication folder, with your new email and password - or this answers "
+            "401.\n\n"
             "plan is FREE and maxHouses is 5. A frontend can show '0 of 5 used' from "
             "exactly this, and disable the add button before somebody hits the wall "
             "rather than after.",

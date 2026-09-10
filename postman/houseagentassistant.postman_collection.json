@@ -2417,7 +2417,7 @@
       "item": [
         {
           "name": "Signup - starting an agency",
-          "description": "The only endpoint on the platform that works with no token at all.\n\nAn agency arriving from nowhere has neither an account nor an agency, and cannot get one without the other: adding staff needs an agency admin, and being an agency admin needs an agency. This creates both in one step, which is the only way to create either.\n\n**Every new agency lands on FREE - five houses.** Moving to a larger plan is in the Platform folder and needs a PLATFORM_ADMIN, because there is no payment behind any of this yet and an agency able to set its own plan would take the unlimited one.\n\nThree things this request does not let you decide, however you fill it in: the plan, the role, and the agencyId. Add them to the body and watch nothing change - each is chosen by the service, because each is a field an attacker would fill in. The agencyId in particular is the value every other service filters data by; it is derived from the name you give rather than accepted from you.",
+          "description": "The only endpoint on the platform that works with no token at all.\n\nAn agency arriving from nowhere has neither an account nor an agency, and cannot get one without the other: adding staff needs an agency admin, and being an agency admin needs an agency. This creates both in one step, which is the only way to create either.\n\n**Every new agency lands on FREE - five houses.** Moving to a larger plan is in the Platform folder and needs a PLATFORM_ADMIN, because there is no payment behind any of this yet and an agency able to set its own plan would take the unlimited one.\n\nThree things this request does not let you decide, however you fill it in: the plan, the role, and the agencyId. Add them to the body and watch nothing change - each is chosen by the service, because each is a field an attacker would fill in. The agencyId in particular is the value every other service filters data by; it is derived from the name you give rather than accepted from you.\n\n**This folder needs Mailpit.** A new agency admin must confirm their email address before they can sign in, and the confirmation link arrives by mail. `docker compose up -d mailpit`, then read it at http://localhost:8025.",
           "item": [
             {
               "name": "Sign up an agency",
@@ -2439,7 +2439,7 @@
                     "signup"
                   ]
                 },
-                "description": "No Authorization header, and none needed.\n\nThe password is yours: unlike a provisioned account, nothing comes back that you then have to change. Sign in with it straight away using the Authentication folder - swap the username for the email you used here.\n\nThe agencyId in the response is derived from agencyName. 'Cocody Lettings' becomes 'cocody-lettings'; a name already taken gets a numbered variant, because two real businesses may share a name and the platform's tenancy scheme does not get to decide who exists.\n\nTry it twice with the same agencyName and different emails to see that. Try it twice with the same email to get 409 - an address that already has an account means sign in, not a second identity.",
+                "description": "No Authorization header, and none needed.\n\n**The account does not work until the email address is confirmed.** Keycloak mails a link; asking for a token before it is clicked answers `invalid_grant - Account is not fully set up`, which is the system working rather than a broken request.\n\nIn development the mail goes to Mailpit. Open http://localhost:8025, click the link in the message, then get a token from the Authentication folder with the email and password you used here.\n\nAgency admins are the only people on the platform who verify - an agent or a landlord created by an admin signs in straight away. The address on those was typed by somebody accountable; this one was typed by a stranger.\n\nThe password is yours, so unlike a provisioned account nothing comes back that you then have to change.\n\nThe agencyId in the response is derived from agencyName. 'Cocody Lettings' becomes 'cocody-lettings'; a name already taken gets a numbered variant, because two real businesses may share a name and the platform's tenancy scheme does not get to decide who exists.\n\nTry it twice with the same agencyName and different emails to see that. Try it twice with the same email to get 409 - an address that already has an account means sign in, not a second identity.",
                 "auth": {
                   "type": "noauth"
                 },
@@ -2474,7 +2474,7 @@
               ]
             },
             {
-              "name": "My agency, straight after signing up",
+              "name": "My agency, once the email is confirmed",
               "request": {
                 "method": "GET",
                 "header": [
@@ -2500,7 +2500,7 @@
                     "profile"
                   ]
                 },
-                "description": "Get a token for the account you just made first - Authentication folder, with your new email and password - or this answers 401.\n\nplan is FREE and maxHouses is 5. A frontend can show '0 of 5 used' from exactly this, and disable the add button before somebody hits the wall rather than after."
+                "description": "Confirm the address in Mailpit and get a token for the new account first - Authentication folder, with your new email and password - or this answers 401.\n\nplan is FREE and maxHouses is 5. A frontend can show '0 of 5 used' from exactly this, and disable the add button before somebody hits the wall rather than after."
               }
             }
           ]

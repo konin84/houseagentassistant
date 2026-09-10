@@ -131,9 +131,16 @@ afterwards if you like, since it turns up in support conversations, but there is
 to type and nothing to validate. Two agencies with the same name both succeed; the
 second gets a numbered variant.
 
-**Send them to the login screen, not into the app.** Signup does not return a token - it
-creates an account, and the person then authenticates through Keycloak like anybody
-else. Prefill the email; they already know the password, having just chosen it.
+**Send them to a "check your email" screen, not into the app.** Signup does not return a
+token, and the account does not work yet: Keycloak mails a verification link, and
+signing in before it is clicked fails with `Account is not fully set up`. Say that
+plainly on the confirmation screen, because a login form rejecting a password the person
+chose ninety seconds ago looks broken. Locally the mail lands in Mailpit at
+<http://localhost:8025>.
+
+Agency admins are the **only** people who verify. Agents, landlords and renters are
+created by an agency admin who knows them and can sign in immediately with their
+one-time password - so do not build a "check your email" step into onboarding.
 
 **`409 EMAIL_ALREADY_REGISTERED` is the interesting failure.** It usually means this
 person already has an account, very often as a landlord or renter with an agency they

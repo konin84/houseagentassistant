@@ -226,6 +226,81 @@ class SelfSignupTest {
         assertTrue(asked.mustChangePassword());
     }
 
+    // ------------------------------------------------------- proving the address
+
+    @Test
+    void anAgencyAdminHasToProveTheyOwnTheAddress() {
+        String email = "unproved-" + System.nanoTime() + "@example.com";
+
+        given()
+                .contentType(ContentType.JSON)
+                .body(signup("Unproved Lettings", email))
+                .when().post("/api/signup")
+                .then().statusCode(201);
+
+        // Without this, signing up as contact@a-real-agency.example takes a real
+        // business's name on the platform and there is nothing they can do about it.
+        // The row still gets created; what they cannot do is sign in.
+        assertTrue(directory.creationRequestFor(email).requiresEmailVerification(),
+                "an account created from an unauthenticated request must prove its "
+                        + "address before it can be used");
+    }
+
+    @Test
+    @TestSecurity(user = "admin", roles = Roles.AGENCY_ADMIN)
+    @OidcSecurity(claims = @Claim(key = "agency_id", value = "verification-agency"))
+    void nobodyElseDoes() {
+        // The friction is spent where an unproved address costs something, and nowhere
+        // else. An agent, a landlord and a renter were each typed in by an agency admin
+        // who knows them - a wrong address there is a mistake to correct, not an attack.
+        //
+        // Making them verify would mean an agency cannot finish onboarding a landlord
+        // standing in front of them until that landlord goes home and checks their mail.
+        String agent = "agent-" + System.nanoTime() + "@example.com";
+        given().contentType(ContentType.JSON)
+                .body(Map.of("email", agent, "firstName", "A", "lastName", "Gent"))
+                .when().post("/api/agency/staff").then().statusCode(201);
+
+        String landlord = "landlord-" + System.nanoTime() + "@example.com";
+        given().contentType(ContentType.JSON)
+                .body(Map.of("email", landlord, "firstName", "L", "lastName", "Ord"))
+                .when().post("/api/agency/landlords").then().statusCode(201);
+
+        String renter = "renter-" + System.nanoTime() + "@example.com";
+        given().contentType(ContentType.JSON)
+                .body(Map.of("email", renter, "firstName", "R", "lastName", "Enter"))
+                .when().post("/api/agency/renters").then().statusCode(201);
+
+        for (String email : java.util.List.of(agent, landlord, renter)) {
+            assertFalse(directory.creationRequestFor(email).requiresEmailVerification(),
+                    email + " should not have to verify anything");
+        }
+    }
+
+    @Test
+    @TestSecurity(user = "platform", roles = Roles.PLATFORM_ADMIN)
+    void soDoesAnAdminTheePlatformCreated() {
+        // The rule is about the role, not about how the account came to exist. An agency
+        // admin created on somebody's behalf is no less powerful than one who signed
+        // themselves up, and one rule in one place cannot drift between call sites.
+        given()
+                .contentType(ContentType.JSON)
+                .body(Map.of("agencyId", "verified-by-platform", "name", "Platform Made"))
+                .when().post("/api/platform/agencies")
+                .then().statusCode(201);
+
+        String email = "platform-made-" + System.nanoTime() + "@example.com";
+        given()
+                .contentType(ContentType.JSON)
+                .body(Map.of("email", email, "firstName", "P", "lastName", "Made"))
+                .when().post("/api/platform/agencies/verified-by-platform/administrators")
+                .then().statusCode(201);
+
+        assertTrue(directory.creationRequestFor(email).requiresEmailVerification());
+        // And still gets a one-time password, so they do both.
+        assertTrue(directory.creationRequestFor(email).mustChangePassword());
+    }
+
     // -------------------------------------------------------------- what refuses
 
     @Test

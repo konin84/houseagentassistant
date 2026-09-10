@@ -36,14 +36,22 @@ import org.jboss.logging.Logger;
  *
  * <p><b>The agency id.</b> Derived from the name - see {@link AgencySlugs}.
  *
- * <h2>What this endpoint still does not have</h2>
+ * <h2>Proving the address</h2>
  *
- * Nobody has proved they own the email address they typed. The account is created with
- * {@code emailVerified} false and can do real work regardless, which means somebody can
- * sign up as {@code contact@a-real-agency.example} and hold that address hostage. Fixing
- * it properly needs a verification mail, and that needs SMTP configured in the realm.
- * Until then the mitigations are the gateway's rate limit and the fact that an
- * unverified agency can reach nobody: it has no landlords, no renters and no houses.
+ * The account is created but cannot be signed into until the person clicks the link
+ * Keycloak mails them. That is what stops somebody signing up as
+ * {@code contact@a-real-agency.example} and holding a real business's name hostage:
+ * they can create the row, and they can never use it.
+ *
+ * <p>Agency admins are the only people on the platform who verify - see
+ * {@link com.digitalpartner.houseagent.agency.identity.NewUser#requiresEmailVerification}.
+ * Everybody else was typed in by somebody accountable, and making them all check their
+ * mail would be friction spent where nothing was at risk.
+ *
+ * <p>The row still exists in the meantime, holding its id, which is the remaining rough
+ * edge: an unverified signup can take a name and never come back. Nothing acts on that
+ * yet. A sweep of agencies whose administrator never verified would be the fix, and it
+ * needs an answer to how long is long enough before deleting somebody's agency.
  */
 @ApplicationScoped
 public class SelfSignup {
