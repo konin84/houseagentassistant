@@ -301,6 +301,11 @@ property_teardown = folder(
 
 images = folder(
     "Agency - images (Cloudinary)",
+    "**This folder needs a Cloudinary account.** Without one the first request answers "
+    "`503 IMAGES_NOT_CONFIGURED` - the designed behaviour, not a fault - and the three "
+    "after it then have no publicId or imageId to work with, so they fail in ways that "
+    "say nothing about the platform. Set CLOUDINARY_* in the service .env to run it, or "
+    "skip the folder.\n\n"
     "Three steps: sign an upload here, send the file to Cloudinary from the browser, "
     "then register the public id. The bytes never pass through this service.\n\n"
     "Needs CLOUDINARY_* in .env. Without it the ticket endpoint answers 503 "
@@ -437,9 +442,17 @@ invoices = folder(
         req("List invoices", "GET",
             url(PAY, ["api", "agency", "invoices"],
                 [("unpaidOnly", "false"), ("page", "0"), ("size", "20")]),
-            "Saves the first invoice id into {{invoiceId}}.",
+            "Saves an invoice id into {{invoiceId}} - the first one that is not already "
+            "paid, falling back to the first of any.\n\n"
+            "Not simply the first: after one pass through this folder that invoice is "
+            "PAID, and recording a payment against it answers 409. Everything after it "
+            "would then run with an empty id and fail for reasons that have nothing to "
+            "do with what is being tested.",
             role=AGENT,
-            capture=("invoiceId", "body.items && body.items.length ? body.items[0].id : null")),
+            capture=("invoiceId",
+                     "body.items && body.items.length"
+                     " ? ((body.items.find(i => i.status !== 'PAID') || body.items[0]).id)"
+                     " : null")),
         req("Overdue invoices", "GET",
             url(PAY, ["api", "agency", "invoices", "overdue"], [("page", "0"), ("size", "20")]),
             "The chase list. Lateness is derived from the due date and the clock, so "
@@ -462,7 +475,14 @@ payments = folder(
             body={"invoiceId": "{{invoiceId}}", "amount": "150000.00", "method": "CASH"}),
         req("List payments", "GET",
             url(PAY, ["api", "agency", "payments"], [("page", "0"), ("size", "20")]),
-            "This agency's payments, newest first.", role=AGENT),
+            "This agency's payments, newest first.\n\n"
+            "Also refreshes {{paymentId}}. The request above only captures one when it "
+            "records a payment, and it cannot when every invoice is already settled - "
+            "so without this the three requests below would run on an empty id and "
+            "answer 404 instead of telling you anything.",
+            role=AGENT,
+            capture=("paymentId",
+                     "body.items && body.items.length ? body.items[0].id : null")),
         req("Get payment", "GET", url(PAY, ["api", "agency", "payments", "{{paymentId}}"]),
             "", role=AGENT),
         req("Confirm settlement", "POST",
@@ -488,7 +508,11 @@ payouts = folder(
             url(PAY, ["api", "agency", "payouts"],
                 [("pendingOnly", "true"), ("page", "0"), ("size", "20")]),
             "Gross, commission and net are stored per payout at the rate that applied "
-            "when it settled, so a later rate change cannot rewrite history.",
+            "when it settled, so a later rate change cannot rewrite history.\n\n"
+            "**Empty until a payment settles.** A payout is what the agency owes the "
+            "landlord out of rent actually received, so there is nothing here until "
+            "money has moved - and the request below then has no id to work with. "
+            "Settle a payment in the folder above first.",
             role=AGENT,
             capture=("payoutId", "body.items && body.items.length ? body.items[0].id : null")),
         req("Mark payout settled", "POST",
@@ -504,11 +528,20 @@ renter = folder(
     [
         req("My invoices", "GET",
             url(PAY, ["api", "renter", "invoices"],
-                [("unpaidOnly", "true"), ("page", "0"), ("size", "20")]),
-            "Across every agency this renter rents from. Saves {{renterInvoiceId}}.",
+                [("unpaidOnly", "false"), ("page", "0"), ("size", "20")]),
+            "Across every agency this renter rents from - no tenant filter applies, "
+            "because a renter is one person wherever they rent.\n\n"
+            "Saves the first unpaid invoice into {{renterInvoiceId}}, falling back to "
+            "any. `unpaidOnly=true` is what a real 'what do I owe' screen sends; it is "
+            "false here so something is always captured. Run in order, the agency "
+            "folder above has usually just settled this renter's only outstanding "
+            "invoice, and an empty id sends the next request to "
+            "/api/renter/invoices//payments.",
             role=RENTER, party="{{renterId}}", agency=False,
             capture=("renterInvoiceId",
-                     "body.items && body.items.length ? body.items[0].invoiceId : null")),
+                     "body.items && body.items.length"
+                     " ? ((body.items.find(i => i.status !== 'PAID') || body.items[0]).invoiceId)"
+                     " : null")),
         req("My invoice", "GET",
             url(PAY, ["api", "renter", "invoices", "{{renterInvoiceId}}"]),
             "Another renter's invoice is 404.",
@@ -655,9 +688,15 @@ platform = folder(
         req("Register an agency", "POST", url(AGENCY_URL, ["api", "platform", "agencies"]),
             "The agencyId is a lower-case slug and becomes the agency_id claim. It can "
             "never be changed: renaming it would orphan every house, lease and invoice "
-            "filed under the old one.",
+            "filed under the old one.\n\n"
+            "Timestamped so the folder can be run twice. A fixed id answers 409 the "
+            "second time, and the four requests below then run against an empty "
+            "{{newAgencyId}} - a screenful of 405s whose cause is three requests "
+            "further up.\n\n"
+            "Note this is the *platform* door. An agency arriving on its own goes "
+            "through the Signup folder, picks no id, and lands on the free plan.",
             role=PLATFORM, agency=False, capture=("newAgencyId", "body.agencyId"),
-            body={"agencyId": "agency-c", "name": "Cocody Lettings",
+            body={"agencyId": "agency-c-{{$timestamp}}", "name": "Cocody Lettings",
                   "city": "Abidjan", "countryCode": "CI",
                   "contactEmail": "contact@cocody-lettings.ci"}),
         req("List agencies", "GET", url(AGENCY_URL, ["api", "platform", "agencies"]),
@@ -673,9 +712,12 @@ platform = folder(
             "password. The account cannot be used until the person sets their own - "
             "logging in with the temporary one answers 'Account is not fully set up'.",
             role=PLATFORM, agency=False,
-            body={"email": "admin@cocody-lettings.ci",
+            body={"email": "admin+{{$timestamp}}@cocody-lettings.ci",
                   "firstName": "Akissi", "lastName": "Admin",
-                  "phone": "+225 07 05 05 05 05"}),
+                  # Both unique per run. A fixed address answers 409 the second time,
+                  # and so does a fixed number - it is a login identifier, so two
+                  # accounts may not share one.
+                  "phone": "+225 07 05 {{$randomInt}} {{$randomInt}}"}),
         req("Change the plan", "PUT",
             url(AGENCY_URL, ["api", "platform", "agencies", "{{newAgencyId}}", "plan"]),
             "FREE (5 houses), STARTER (25), PROFESSIONAL (100) or ENTERPRISE "
@@ -857,12 +899,53 @@ Most of the interesting behaviour is what these endpoints *refuse*:
   enough. The agency and personal endpoints need a claim it deliberately lacks.
 """
 
+
+# ============================================================================
+#  One test script, run after every request in the collection
+# ============================================================================
+#  Postman runs a collection-level test after each request, which is the only
+#  place a rule can be written once and apply everywhere.
+#
+#  It deliberately does not assert a status per request. Those would have to be
+#  kept in step with the API by hand, and a stale expectation fails for the wrong
+#  reason - worse than no expectation at all. It checks the two things that are
+#  true of every request instead.
+#
+#  The empty-segment check is the one worth having. When a capture fails, every
+#  later request in the folder goes to /api/agency/houses//images and answers 404
+#  or 405, with the cause somewhere further up and invisible. This names it at the
+#  first request that suffers from it.
+# ============================================================================
+COLLECTION_GUARD = [
+    "// Applies to every request. See the collection description.",
+    "const segments = (pm.request.url.path || []).map(String);",
+    "",
+    "pm.test('no unresolved id in the path', function () {",
+    "    const empty = segments.some(s => s === '' || s.indexOf('{{') === 0);",
+    "    const why = ' has an empty segment: a capture earlier in this folder did not"
+    " run, so fix that request first.';",
+    "    pm.expect(empty, segments.join('/') + why).to.be.false;",
+    "});",
+    "",
+    "pm.test('no server error', function () {",
+    "    // 503 IMAGES_NOT_CONFIGURED is a designed answer rather than a fault: the",
+    "    // platform runs fine with no Cloudinary account, it just cannot sign uploads.",
+    "    let code = null;",
+    "    try { code = pm.response.json().code; } catch (e) { /* not JSON */ }",
+    "    if (pm.response.code === 503 && code === 'IMAGES_NOT_CONFIGURED') { return; }",
+    "    pm.expect(pm.response.code, 'server error from ' + pm.request.url.toString())",
+    "        .to.be.below(500);",
+    "});",
+]
+
 collection = {
     "info": {
         "name": "houseagentassistant",
         "description": DESCRIPTION,
         "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
     },
+    "event": [{"listen": "test",
+               "script": {"type": "text/javascript", "exec": COLLECTION_GUARD}}],
     "auth": {"type": "bearer",
              "bearer": [{"key": "token", "value": "{{accessToken}}", "type": "string"}]},
     "variable": [

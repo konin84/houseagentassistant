@@ -4,6 +4,34 @@
     "description": "Every endpoint across the five services of houseagentassistant.\n\n## Setting up\n\n```\ndocker compose up -d keycloak gateway redpanda mailpit\n```\n\nThen each service from its own folder. Quarkus dev mode binds debugger port 5005, so\ngive the second and later ones their own:\n\n```\ncd property-service     && ../mvnw quarkus:dev\ncd lease-service        && ../mvnw quarkus:dev -Ddebug=5006\ncd payment-service      && ../mvnw quarkus:dev -Ddebug=5007\ncd notification-service && ../mvnw quarkus:dev -Ddebug=5008\ncd agency-service       && ../mvnw quarkus:dev -Ddebug=5009\n```\n\n## Pick an environment\n\nThe collection is the same either way; only the base URLs differ.\n\n| Environment | Talks to | Use when |\n|---|---|---|\n| `local-dev` | the four ports directly | debugging one service |\n| `gateway` | `localhost:8000` | everything else, and what a frontend will use |\n\n## Logging in\n\nRun **one** request from the **Authentication** folder. It stores a token in\n`{{accessToken}}`, which every other request sends as a bearer token, so changing who\nyou are is one click. Start with `agent-a`.\n\nThe realm has two clients. This collection uses `houseagent-backend`, which allows\npassword grant because there is no browser here to redirect. A frontend uses\n`houseagent-web` instead - authorization code with PKCE, and password grant refused. See\n`docs/frontend.md`.\n\n### Without Keycloak\n\nEvery request also carries `X-Dev-Roles`, `X-Dev-Agency` and `X-Dev-Party`. They are\nread by a bean that exists only in dev builds, and only when no real token is present -\nso they let you poke at a service with no Docker at all, and stop mattering the moment\nyou fetch a token. Send neither and you are an anonymous visitor, which is how the\nmarketplace folder works.\n\n## Suggested order\n\n1. **agency-service** - the people: an agent, a landlord and a renter, with the\n   `partyId` values the next two folders need\n2. **property-service** - creates a house, leaves `{{houseId}}` set\n3. **lease-service** - signs a lease against it\n4. **payment-service** - invoices derived from that lease\n5. **notification-service** - contact details; independent of the rest\n\nIds are captured into collection variables as you go, so a folder can be worked top to\nbottom without copying anything. Watch the Postman console to see what was captured.\n\n`docs/user-guide.md` walks the same path as a story, with what each person sees and why.\n\n## Two folders need more than the service\n\n- **payment-service** needs `redpanda`. It learns what to bill from lease events, so\n  without a broker it never hears about a signed lease and every list is correctly\n  empty. Invoices appear about a minute after signing, when the generator next runs.\n- **Agency - images** needs `CLOUDINARY_*` in `.env`, or the upload ticket answers 503.\n\n## Seeing the rules work\n\nMost of the interesting behaviour is what these endpoints *refuse*:\n\n- Get a token as `agent-b`, then re-run **Get house** - 404, not 403. Another agency's\n  house and a house that does not exist are deliberately indistinguishable.\n- Send **Sign lease** twice - the second is 409, refused by a database constraint rather\n  than by application code.\n- Send **Record a settled payment** twice with the same reference - 409, and the invoice\n  is left untouched.\n- Use the `agent-a` token on **Delete house** - 403, it needs AGENCY_ADMIN.\n- Use the `platform-admin` token anywhere - 403 everywhere, because a role alone is not\n  enough. The agency and personal endpoints need a claim it deliberately lacks.\n",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Applies to every request. See the collection description.",
+          "const segments = (pm.request.url.path || []).map(String);",
+          "",
+          "pm.test('no unresolved id in the path', function () {",
+          "    const empty = segments.some(s => s === '' || s.indexOf('{{') === 0);",
+          "    const why = ' has an empty segment: a capture earlier in this folder did not run, so fix that request first.';",
+          "    pm.expect(empty, segments.join('/') + why).to.be.false;",
+          "});",
+          "",
+          "pm.test('no server error', function () {",
+          "    // 503 IMAGES_NOT_CONFIGURED is a designed answer rather than a fault: the",
+          "    // platform runs fine with no Cloudinary account, it just cannot sign uploads.",
+          "    let code = null;",
+          "    try { code = pm.response.json().code; } catch (e) { /* not JSON */ }",
+          "    if (pm.response.code === 503 && code === 'IMAGES_NOT_CONFIGURED') { return; }",
+          "    pm.expect(pm.response.code, 'server error from ' + pm.request.url.toString())",
+          "        .to.be.below(500);",
+          "});"
+        ]
+      }
+    }
+  ],
   "auth": {
     "type": "bearer",
     "bearer": [
@@ -1072,7 +1100,7 @@
         },
         {
           "name": "Agency - images (Cloudinary)",
-          "description": "Three steps: sign an upload here, send the file to Cloudinary from the browser, then register the public id. The bytes never pass through this service.\n\nNeeds CLOUDINARY_* in .env. Without it the ticket endpoint answers 503 IMAGES_NOT_CONFIGURED and everything else still works.",
+          "description": "**This folder needs a Cloudinary account.** Without one the first request answers `503 IMAGES_NOT_CONFIGURED` - the designed behaviour, not a fault - and the three after it then have no publicId or imageId to work with, so they fail in ways that say nothing about the platform. Set CLOUDINARY_* in the service .env to run it, or skip the folder.\n\nThree steps: sign an upload here, send the file to Cloudinary from the browser, then register the public id. The bytes never pass through this service.\n\nNeeds CLOUDINARY_* in .env. Without it the ticket endpoint answers 503 IMAGES_NOT_CONFIGURED and everything else still works.",
           "item": [
             {
               "name": "Request upload ticket",
@@ -1874,7 +1902,7 @@
                     }
                   ]
                 },
-                "description": "Saves the first invoice id into {{invoiceId}}."
+                "description": "Saves an invoice id into {{invoiceId}} - the first one that is not already paid, falling back to the first of any.\n\nNot simply the first: after one pass through this folder that invoice is PAID, and recording a payment against it answers 409. Everything after it would then run with an empty id and fail for reasons that have nothing to do with what is being tested."
               },
               "event": [
                 {
@@ -1885,7 +1913,7 @@
                       "// Saves an id so the next request in this folder just works.",
                       "if (pm.response.code < 300) {",
                       "    const body = pm.response.json();",
-                      "    const value = body.items && body.items.length ? body.items[0].id : null;",
+                      "    const value = body.items && body.items.length ? ((body.items.find(i => i.status !== 'PAID') || body.items[0]).id) : null;",
                       "    if (value) {",
                       "        pm.collectionVariables.set('invoiceId', value);",
                       "        console.log('invoiceId =', value);",
@@ -2073,8 +2101,27 @@
                     }
                   ]
                 },
-                "description": "This agency's payments, newest first."
-              }
+                "description": "This agency's payments, newest first.\n\nAlso refreshes {{paymentId}}. The request above only captures one when it records a payment, and it cannot when every invoice is already settled - so without this the three requests below would run on an empty id and answer 404 instead of telling you anything."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// Saves an id so the next request in this folder just works.",
+                      "if (pm.response.code < 300) {",
+                      "    const body = pm.response.json();",
+                      "    const value = body.items && body.items.length ? body.items[0].id : null;",
+                      "    if (value) {",
+                      "        pm.collectionVariables.set('paymentId', value);",
+                      "        console.log('paymentId =', value);",
+                      "    }",
+                      "}"
+                    ]
+                  }
+                }
+              ]
             },
             {
               "name": "Get payment",
@@ -2244,7 +2291,7 @@
                     }
                   ]
                 },
-                "description": "Gross, commission and net are stored per payout at the rate that applied when it settled, so a later rate change cannot rewrite history."
+                "description": "Gross, commission and net are stored per payout at the rate that applied when it settled, so a later rate change cannot rewrite history.\n\n**Empty until a payment settles.** A payout is what the agency owes the landlord out of rent actually received, so there is nothing here until money has moved - and the request below then has no id to work with. Settle a payment in the folder above first."
               },
               "event": [
                 {
@@ -2321,7 +2368,7 @@
                   }
                 ],
                 "url": {
-                  "raw": "{{paymentUrl}}/api/renter/invoices?unpaidOnly=true&page=0&size=20",
+                  "raw": "{{paymentUrl}}/api/renter/invoices?unpaidOnly=false&page=0&size=20",
                   "host": [
                     "{{paymentUrl}}"
                   ],
@@ -2333,7 +2380,7 @@
                   "query": [
                     {
                       "key": "unpaidOnly",
-                      "value": "true"
+                      "value": "false"
                     },
                     {
                       "key": "page",
@@ -2345,7 +2392,7 @@
                     }
                   ]
                 },
-                "description": "Across every agency this renter rents from. Saves {{renterInvoiceId}}."
+                "description": "Across every agency this renter rents from - no tenant filter applies, because a renter is one person wherever they rent.\n\nSaves the first unpaid invoice into {{renterInvoiceId}}, falling back to any. `unpaidOnly=true` is what a real 'what do I owe' screen sends; it is false here so something is always captured. Run in order, the agency folder above has usually just settled this renter's only outstanding invoice, and an empty id sends the next request to /api/renter/invoices//payments."
               },
               "event": [
                 {
@@ -2356,7 +2403,7 @@
                       "// Saves an id so the next request in this folder just works.",
                       "if (pm.response.code < 300) {",
                       "    const body = pm.response.json();",
-                      "    const value = body.items && body.items.length ? body.items[0].invoiceId : null;",
+                      "    const value = body.items && body.items.length ? ((body.items.find(i => i.status !== 'PAID') || body.items[0]).invoiceId) : null;",
                       "    if (value) {",
                       "        pm.collectionVariables.set('renterInvoiceId', value);",
                       "        console.log('renterInvoiceId =', value);",
@@ -2697,10 +2744,10 @@
                     "agencies"
                   ]
                 },
-                "description": "The agencyId is a lower-case slug and becomes the agency_id claim. It can never be changed: renaming it would orphan every house, lease and invoice filed under the old one.",
+                "description": "The agencyId is a lower-case slug and becomes the agency_id claim. It can never be changed: renaming it would orphan every house, lease and invoice filed under the old one.\n\nTimestamped so the folder can be run twice. A fixed id answers 409 the second time, and the four requests below then run against an empty {{newAgencyId}} - a screenful of 405s whose cause is three requests further up.\n\nNote this is the *platform* door. An agency arriving on its own goes through the Signup folder, picks no id, and lands on the free plan.",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"agencyId\": \"agency-c\",\n  \"name\": \"Cocody Lettings\",\n  \"city\": \"Abidjan\",\n  \"countryCode\": \"CI\",\n  \"contactEmail\": \"contact@cocody-lettings.ci\"\n}",
+                  "raw": "{\n  \"agencyId\": \"agency-c-{{$timestamp}}\",\n  \"name\": \"Cocody Lettings\",\n  \"city\": \"Abidjan\",\n  \"countryCode\": \"CI\",\n  \"contactEmail\": \"contact@cocody-lettings.ci\"\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -2810,7 +2857,7 @@
                 "description": "Creates an AGENCY_ADMIN inside that agency and returns a one-time password. The account cannot be used until the person sets their own - logging in with the temporary one answers 'Account is not fully set up'.",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"email\": \"admin@cocody-lettings.ci\",\n  \"firstName\": \"Akissi\",\n  \"lastName\": \"Admin\",\n  \"phone\": \"+225 07 05 05 05 05\"\n}",
+                  "raw": "{\n  \"email\": \"admin+{{$timestamp}}@cocody-lettings.ci\",\n  \"firstName\": \"Akissi\",\n  \"lastName\": \"Admin\",\n  \"phone\": \"+225 07 05 {{$randomInt}} {{$randomInt}}\"\n}",
                   "options": {
                     "raw": {
                       "language": "json"
