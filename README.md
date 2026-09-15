@@ -191,6 +191,11 @@ with, what the two claims mean, what each status code implies for the UI, and th
 handful of behaviours that surprise people - a house vanishing from the marketplace
 when it is let, invoices appearing on their own, and paying being two steps.
 
+**Taking the project over?** `docs/handover.md` is the runbook: prerequisites through to
+a verified system in half an hour, the loop you work in day to day, the failures you are
+actually going to hit and what each one means, where the state lives, and where the work
+stopped.
+
 ### Dev mode
 
 ```bash
