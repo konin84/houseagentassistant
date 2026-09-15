@@ -1,0 +1,245 @@
+# ============================================================================
+#  Gateway routing - production
+# ============================================================================
+#  The rules are the development ones, unchanged. What differs is three things:
+#
+#    1. Services are container names on the compose network, not
+#       host.docker.internal - nothing runs on the host here.
+#    2. Every router carries Host() and TLS. Two hostnames exist: the API and
+#       Keycloak.
+#    3. CORS names one origin. The development file allows "*", which a browser
+#       refuses for credentialed requests anyway - so leaving it is both
+#       insecure and broken.
+#
+#  Replace api.example.com, app.example.com and auth.example.com throughout.
+#  They appear in the rules below, which cannot read the environment - Traefik's
+#  file provider does no substitution.
+#
+# ============================================================================
+#  The gateway still does NOT authenticate
+# ============================================================================
+#  Every service validates its own bearer token. A gateway that authenticated
+#  and forwarded "trusted" traffic would mean anything able to reach the
+#  internal network could act as anyone - and in this system, where agency_id in
+#  a token decides which customer's data is returned, that is the whole
+#  ballgame. The gateway forwards the Authorization header and forms no opinion.
+# ============================================================================
+
+http:
+
+  middlewares:
+    prod-cors:
+      headers:
+        accessControlAllowOriginList:
+          - "https://app.example.com"
+        accessControlAllowMethods:
+          - GET
+          - POST
+          - PUT
+          - PATCH
+          - DELETE
+          - OPTIONS
+        accessControlAllowHeaders:
+          - "Authorization"
+          - "Content-Type"
+          - "Idempotency-Key"
+        accessControlAllowCredentials: true
+        accessControlMaxAge: 3600
+        addVaryHeader: true
+
+    # Signup is the one unauthenticated endpoint that causes an account to
+    # exist, which makes it the one worth throttling. Rate limiting belongs here
+    # rather than in the service: an in-process counter is per instance, so it
+    # relaxes every time the service scales out - exactly when it matters most.
+    #
+    # It is not a defence against a distributed attempt; that needs a CAPTCHA
+    # and a verification mail, and only the second of those exists.
+    signup-throttle:
+      rateLimit:
+        average: 1
+        burst: 5
+        period: 1s
+
+    security-headers:
+      headers:
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        contentTypeNosniff: true
+        frameDeny: true
+        referrerPolicy: "strict-origin-when-cross-origin"
+
+  routers:
+
+    # --- property-service ---------------------------------------------------
+    # /api/agency is split across three services rather than owned by one. The
+    # paths were designed per service, and putting a gateway in front is what
+    # makes that visible. Traefik prioritises longer rules first, so these never
+    # collide with the lease, payment and agency routes below.
+    property-houses:
+      rule: "Host(`api.example.com`) && PathPrefix(`/api/agency/houses`)"
+      service: property
+      entryPoints: [websecure]
+      middlewares: [prod-cors, security-headers]
+      tls:
+        certResolver: le
+
+    property-marketplace:
+      rule: "Host(`api.example.com`) && PathPrefix(`/api/marketplace`)"
+      service: property
+      entryPoints: [websecure]
+      middlewares: [prod-cors, security-headers]
+      tls:
+        certResolver: le
+
+    # --- lease-service ------------------------------------------------------
+    lease-agency:
+      rule: "Host(`api.example.com`) && PathPrefix(`/api/agency/leases`)"
+      service: lease
+      entryPoints: [websecure]
+      middlewares: [prod-cors, security-headers]
+      tls:
+        certResolver: le
+
+    lease-landlord:
+      rule: "Host(`api.example.com`) && PathPrefix(`/api/landlord/leases`)"
+      service: lease
+      entryPoints: [websecure]
+      middlewares: [prod-cors, security-headers]
+      tls:
+        certResolver: le
+
+    # --- payment-service ----------------------------------------------------
+    payment-agency:
+      rule: >-
+        Host(`api.example.com`) && (
+        PathPrefix(`/api/agency/invoices`)
+        || PathPrefix(`/api/agency/payments`)
+        || PathPrefix(`/api/agency/payouts`)
+        || PathPrefix(`/api/agency/settlement-config`)
+        )
+      service: payment
+      entryPoints: [websecure]
+      middlewares: [prod-cors, security-headers]
+      tls:
+        certResolver: le
+
+    payment-renter:
+      rule: "Host(`api.example.com`) && PathPrefix(`/api/renter`)"
+      service: payment
+      entryPoints: [websecure]
+      middlewares: [prod-cors, security-headers]
+      tls:
+        certResolver: le
+
+    # Landlords read their leases from one service and their earnings from
+    # another. A single /api/landlord route would send both to the same place.
+    payment-landlord:
+      rule: "Host(`api.example.com`) && PathPrefix(`/api/landlord/earnings`)"
+      service: payment
+      entryPoints: [websecure]
+      middlewares: [prod-cors, security-headers]
+      tls:
+        certResolver: le
+
+    # --- agency-service -----------------------------------------------------
+    agency-admin:
+      rule: >-
+        Host(`api.example.com`) && (
+        PathPrefix(`/api/agency/profile`)
+        || PathPrefix(`/api/agency/staff`)
+        || PathPrefix(`/api/agency/landlords`)
+        || PathPrefix(`/api/agency/renters`)
+        )
+      service: agency
+      entryPoints: [websecure]
+      middlewares: [prod-cors, security-headers]
+      tls:
+        certResolver: le
+
+    agency-platform:
+      rule: "Host(`api.example.com`) && PathPrefix(`/api/platform`)"
+      service: agency
+      entryPoints: [websecure]
+      middlewares: [prod-cors, security-headers]
+      tls:
+        certResolver: le
+
+    # The only route on the platform a caller with no token is expected to
+    # reach - and therefore the only one carrying a rate limit.
+    agency-signup:
+      rule: "Host(`api.example.com`) && PathPrefix(`/api/signup`)"
+      service: agency
+      entryPoints: [websecure]
+      middlewares: [prod-cors, security-headers, signup-throttle]
+      tls:
+        certResolver: le
+
+    # --- notification-service -----------------------------------------------
+    notification-contacts:
+      rule: >-
+        Host(`api.example.com`) && (
+        PathPrefix(`/api/me/contact`) || PathPrefix(`/api/contacts`)
+        )
+      service: notification
+      entryPoints: [websecure]
+      middlewares: [prod-cors, security-headers]
+      tls:
+        certResolver: le
+
+    # --- Keycloak -----------------------------------------------------------
+    # On its own hostname, never as a path under the API. A token's iss claim is
+    # built from the host it was requested through, so auth.example.com must be
+    # exactly what OIDC_AUTH_SERVER_URL says and exactly what clients use. Put
+    # it under api.example.com/auth and the issuer changes, while the services
+    # still expect the old one - and all five reject perfectly valid tokens.
+    #
+    # The development file does not route Keycloak at all, for this reason. Here
+    # it is routed, safely, because KC_HOSTNAME makes the container agree about
+    # its own address.
+    keycloak:
+      rule: "Host(`auth.example.com`)"
+      service: keycloak
+      entryPoints: [websecure]
+      middlewares: [security-headers]
+      tls:
+        certResolver: le
+
+  services:
+    property:
+      loadBalancer:
+        servers:
+          - url: "http://property-service:8081"
+    lease:
+      loadBalancer:
+        servers:
+          - url: "http://lease-service:8082"
+    payment:
+      loadBalancer:
+        servers:
+          - url: "http://payment-service:8083"
+    notification:
+      loadBalancer:
+        servers:
+          - url: "http://notification-service:8084"
+    agency:
+      loadBalancer:
+        servers:
+          - url: "http://agency-service:8085"
+    keycloak:
+      loadBalancer:
+        servers:
+          - url: "http://keycloak:8080"
+
+# ============================================================================
+#  Deliberately not routed
+# ============================================================================
+#  /q/health and /q/openapi. A health check exists to tell you whether one
+#  instance is up; asking a load balancer produces the least useful possible
+#  answer to that question. The services publish no ports, so monitoring reaches
+#  them from inside the network - `docker compose exec`, or a monitoring agent
+#  attached to the internal bridge.
+#
+#  The Traefik dashboard. The routing table describes every endpoint the
+#  platform has, including which service owns which slice of /api/agency. There
+#  is no --api.insecure in the production command line and no port for it.
+# ============================================================================

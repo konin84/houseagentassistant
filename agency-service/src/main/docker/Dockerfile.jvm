@@ -1,0 +1,32 @@
+# ============================================================================
+#  agency-service - JVM image
+# ============================================================================
+#  Built from target/quarkus-app, so `./mvnw clean package` must have run first.
+#  The four COPY lines are not tidiness: lib/ is the bulk of the image and
+#  changes only when a dependency does, so copying it before app/ means a code
+#  change re-uploads megabytes rather than hundreds of them.
+#
+#      ./mvnw clean package -DskipTests -Dquarkus.profile=prod
+#      docker build -f agency-service/src/main/docker/Dockerfile.jvm #                   -t houseagent/agency-service:$TAG agency-service
+#
+#  Build with the prod profile. DevIdentityAugmentor is @IfBuildProfile("dev"),
+#  so a prod build omits the class entirely and the X-Dev-* headers cannot work
+#  however the container is configured. A dev-built jar keeps that path alive.
+# ============================================================================
+
+FROM registry.access.redhat.com/ubi9/openjdk-21-runtime:1.21
+
+ENV LANGUAGE='en_US:en'
+
+COPY --chown=185 target/quarkus-app/lib/      /deployments/lib/
+COPY --chown=185 target/quarkus-app/*.jar     /deployments/
+COPY --chown=185 target/quarkus-app/app/      /deployments/app/
+COPY --chown=185 target/quarkus-app/quarkus/  /deployments/quarkus/
+
+EXPOSE 8085
+USER 185
+
+# 0.0.0.0 because the default binds loopback, which inside a container means
+# the gateway cannot reach it and the failure looks like a routing problem.
+ENV JAVA_OPTS_APPEND="-Dquarkus.http.host=0.0.0.0 -Djava.util.logging.manager=org.jboss.logmanager.LogManager"
+ENV JAVA_APP_JAR="/deployments/quarkus-run.jar"

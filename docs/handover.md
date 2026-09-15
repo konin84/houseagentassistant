@@ -13,6 +13,7 @@ and duplicating them here would mean two descriptions drifting apart:
 | [`../README.md`](../README.md) | You need to know *why* it is built this way - the five isolation rules, events, money, the gateway |
 | [`user-guide.md`](user-guide.md) | You need the domain: an agency lists a house, a lease is signed, rent is invoiced and paid, the landlord is emailed |
 | [`frontend.md`](frontend.md) | You are building a client against the API |
+| [`deployment.md`](deployment.md) | You are putting it on a server |
 
 Read this one first, then `user-guide.md`. Between them you can run the system and know
 what it is for. `README.md` is the one to read slowly, and it rewards that.
@@ -482,19 +483,26 @@ the security check that makes it safe.
 
 ## 7. Deployment
 
-Not yet done. What exists:
+[`deployment.md`](deployment.md) covers a single VPS with Docker Compose, end to end.
+What exists for it:
 
-- `./mvnw clean install` produces `target/quarkus-app/quarkus-run.jar` per service,
-  which is what you would actually deploy.
-- `application-prod.yaml` per service, reading everything from the environment and
-  requiring TLS, with no fallbacks.
-- The gateway routing table in `infra/traefik/dynamic.yaml`, which in a deployment gets
-  replaced by an Ingress or whatever the platform uses. **The routing table is the part
-  worth keeping**, not the Traefik file.
+- `Dockerfile.jvm` per service, under `src/main/docker/`
+- `docker-compose.prod.yml` - the five services, gateway, Postgres, Keycloak and
+  Redpanda on an internal network, with only 80 and 443 published
+- `.env.prod.example` - every variable the prod profiles demand, annotated
+- `infra/traefik/prod/dynamic.yaml` - the same routing rules with TLS, a real CORS
+  origin, and Keycloak on its own hostname
+- `application-prod.yaml` per service, reading everything from the environment, with no
+  fallbacks
 
-What does not exist: Dockerfiles for the services, Kubernetes manifests, a CI pipeline,
-and a managed Keycloak. The realm export in `infra/keycloak/` is a development realm -
-it says so in the password of every seeded user - and a deployment needs a real one.
+Two things to understand before you run any of it. **Build with the prod profile** -
+`DevIdentityAugmentor` is `@IfBuildProfile("dev")`, so a prod build omits the class and
+the `X-Dev-*` headers cannot work; a dev-built jar keeps that path alive. And **the
+realm in `infra/keycloak/` cannot be deployed** - it seeds six users whose password is
+`password`. `deployment.md` section 6 lists what to rebuild by hand.
+
+Still missing: CI, centralised logs, metrics, alerting, automated backups, and any
+second instance of anything.
 
 ---
 

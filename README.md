@@ -196,6 +196,11 @@ a verified system in half an hour, the loop you work in day to day, the failures
 actually going to hit and what each one means, where the state lives, and where the work
 stopped.
 
+**Deploying it?** `docs/deployment.md` covers a single VPS with Docker Compose - images,
+TLS, the production realm that has to be built by hand because the development one seeds
+six users whose password is `password`, and the `iss` mismatch that is the most common
+way the whole thing fails at once.
+
 ### Dev mode
 
 ```bash

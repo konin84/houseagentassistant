@@ -39,6 +39,9 @@ nb-configuration.xml
 # Local secrets - never commit. Copy .env.example to .env instead.
 .env
 
+# Production secrets - never commit. Copy .env.prod.example on the VPS instead.
+.env.prod
+
 # Quarkus
 .quarkus/
 /.quarkus/cli/plugins/

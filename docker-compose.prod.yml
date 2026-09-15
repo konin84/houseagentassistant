@@ -1,0 +1,243 @@
+# ============================================================================
+#  houseagentassistant - single-VPS deployment
+# ============================================================================
+#      docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
+#
+#  Everything here differs from docker-compose.yml in one way that matters: that
+#  file exists to support five services running on a developer's host under
+#  quarkus:dev, so Traefik reaches back out through host.docker.internal and
+#  every port is published for convenience. Here the services are containers on
+#  an internal network, and the only ports reaching the VPS's public interface
+#  are the gateway's 80 and 443.
+#
+#  See docs/deployment.md. The Keycloak realm is the part that cannot be copied
+#  from development - infra/keycloak/ seeds six users whose password is
+#  "password".
+# ============================================================================
+
+x-service-base: &service-base
+  restart: unless-stopped
+  networks: [internal]
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redpanda:
+      condition: service_started
+  environment: &service-env
+    DB_USERNAME: ${DB_USERNAME}
+    DB_PASSWORD: ${DB_PASSWORD}
+    # Must be the public URL clients actually fetch tokens from. A token's iss
+    # claim is built from the host it was requested through, so a mismatch here
+    # - scheme, host, or a trailing slash - makes every service reject tokens
+    # that are perfectly valid. It is the most common way this deploy breaks.
+    OIDC_AUTH_SERVER_URL: ${OIDC_AUTH_SERVER_URL}
+    OIDC_CLIENT_ID: ${OIDC_CLIENT_ID}
+    OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET}
+    KAFKA_BOOTSTRAP_SERVERS: redpanda:29092
+    APP_LOG_LEVEL: ${APP_LOG_LEVEL:-INFO}
+    QUARKUS_PROFILE: prod
+
+services:
+
+  # --- the five services --------------------------------------------------
+  # No ports: published. They are reachable only from the internal network, by
+  # the gateway. That includes /q/health, which is deliberately not routed -
+  # monitoring reaches it from inside, or from `docker compose exec`.
+
+  property-service:
+    <<: *service-base
+    image: houseagent/property-service:${TAG:-latest}
+    build:
+      context: ./property-service
+      dockerfile: src/main/docker/Dockerfile.jvm
+    container_name: hah-property
+    environment:
+      <<: *service-env
+      DB_URL: jdbc:postgresql://postgres:5432/houseagent_property
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY}
+      # Signs upload requests. Never leaves the server.
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET}
+
+  lease-service:
+    <<: *service-base
+    image: houseagent/lease-service:${TAG:-latest}
+    build:
+      context: ./lease-service
+      dockerfile: src/main/docker/Dockerfile.jvm
+    container_name: hah-lease
+    environment:
+      <<: *service-env
+      # The migration needs btree_gist for the exclusion constraint that stops a
+      # house being let twice. The role must be able to CREATE EXTENSION, or the
+      # extension must already exist in this database.
+      DB_URL: jdbc:postgresql://postgres:5432/houseagent_lease
+
+  payment-service:
+    <<: *service-base
+    image: houseagent/payment-service:${TAG:-latest}
+    build:
+      context: ./payment-service
+      dockerfile: src/main/docker/Dockerfile.jvm
+    container_name: hah-payment
+    environment:
+      <<: *service-env
+      DB_URL: jdbc:postgresql://postgres:5432/houseagent_payment
+
+  notification-service:
+    <<: *service-base
+    image: houseagent/notification-service:${TAG:-latest}
+    build:
+      context: ./notification-service
+      dockerfile: src/main/docker/Dockerfile.jvm
+    container_name: hah-notification
+    environment:
+      <<: *service-env
+      DB_URL: jdbc:postgresql://postgres:5432/houseagent_notification
+      # Real people are emailed from here. A wrong host means either nobody is
+      # told, or somebody else is - and the delivery log fills quietly either way.
+      MAIL_FROM: ${MAIL_FROM}
+      MAIL_HOST: ${MAIL_HOST}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USERNAME: ${MAIL_USERNAME}
+      MAIL_PASSWORD: ${MAIL_PASSWORD}
+
+  agency-service:
+    <<: *service-base
+    image: houseagent/agency-service:${TAG:-latest}
+    build:
+      context: ./agency-service
+      dockerfile: src/main/docker/Dockerfile.jvm
+    container_name: hah-agency
+    environment:
+      <<: *service-env
+      DB_URL: jdbc:postgresql://postgres:5432/houseagent_agency
+      # This service creates accounts. Its admin credential should be scoped to
+      # manage-users, view-users and query-users and nothing further, so that
+      # losing it cannot grant anybody a privilege the platform does not already
+      # hand out.
+      KEYCLOAK_URL: ${KEYCLOAK_URL}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-houseagent}
+      KEYCLOAK_ADMIN_CLIENT_ID: ${KEYCLOAK_ADMIN_CLIENT_ID:-houseagent-admin}
+      KEYCLOAK_ADMIN_CLIENT_SECRET: ${KEYCLOAK_ADMIN_CLIENT_SECRET}
+
+  # --- gateway ------------------------------------------------------------
+  # The only container with published ports. The routing table in
+  # infra/traefik/prod/ is the development one with the service addresses
+  # changed and TLS added; the rules themselves are unchanged.
+  gateway:
+    image: traefik:v3.2
+    container_name: hah-gateway
+    restart: unless-stopped
+    command:
+      - --providers.file.directory=/etc/traefik/dynamic
+      - --providers.file.watch=true
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      # Everything arrives over TLS. Rent notices and tenancy records are not
+      # information to hand to the network in the clear.
+      - --entrypoints.web.http.redirections.entryPoint.to=websecure
+      - --entrypoints.web.http.redirections.entryPoint.scheme=https
+      - --certificatesresolvers.le.acme.email=${ACME_EMAIL}
+      - --certificatesresolvers.le.acme.storage=/acme/acme.json
+      - --certificatesresolvers.le.acme.httpchallenge=true
+      - --certificatesresolvers.le.acme.httpchallenge.entrypoint=web
+      # No --api.insecure and no dashboard port. The routing table describes
+      # every endpoint the platform has; it is not public information.
+      - --accesslog=true
+      - --log.level=INFO
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infra/traefik/prod:/etc/traefik/dynamic:ro
+      - acme-data:/acme
+    networks: [internal]
+    depends_on:
+      - property-service
+      - lease-service
+      - payment-service
+      - notification-service
+      - agency-service
+
+  # --- infrastructure -----------------------------------------------------
+
+  postgres:
+    image: postgres:18-alpine
+    container_name: hah-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      # keycloak is in the list because it stores its realm here too. Note that
+      # infra/postgres-init also creates a _test database beside each of these -
+      # harmless, unused in a deployment, and not worth a second script.
+      POSTGRES_MULTIPLE_DATABASES: houseagent_property,houseagent_lease,houseagent_payment,houseagent_notification,houseagent_agency,keycloak
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres-init:/docker-entrypoint-initdb.d
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    # Not published. Reach it with `docker compose exec postgres psql`, or an
+    # SSH tunnel. A database on the public interface of a VPS is found within
+    # hours by people who were not looking for you specifically.
+
+  # Behind the gateway on its own hostname rather than a path, because a token's
+  # iss claim comes from the host it was issued through - see the note on
+  # OIDC_AUTH_SERVER_URL above, and the tail of infra/traefik/dynamic.yaml.
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    container_name: hah-keycloak
+    restart: unless-stopped
+    command: start --optimized
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: ${DB_USERNAME}
+      KC_DB_PASSWORD: ${DB_PASSWORD}
+      KC_HOSTNAME: ${KEYCLOAK_HOSTNAME}
+      KC_PROXY_HEADERS: xforwarded
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+      # Bootstrap only. Create a real admin, then remove these and restart -
+      # a permanent bootstrap credential is a permanent way in.
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USER}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+    networks: [internal]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # No --import-realm, and infra/keycloak is not mounted. That realm seeds six
+    # users whose password is "password" and a client secret published in this
+    # repository. Build the production realm once, by hand - docs/deployment.md.
+
+  redpanda:
+    image: redpandadata/redpanda:v24.2.7
+    container_name: hah-redpanda
+    restart: unless-stopped
+    command:
+      - redpanda start
+      - --smp 1
+      # Uncapped, Redpanda sizes itself against the whole machine and starves
+      # five JVMs sharing it.
+      - --memory 1G
+      - --reserve-memory 0M
+      - --overprovisioned
+      - --kafka-addr PLAINTEXT://0.0.0.0:29092
+      - --advertise-kafka-addr PLAINTEXT://redpanda:29092
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    networks: [internal]
+
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  redpanda-data:
+  acme-data:
