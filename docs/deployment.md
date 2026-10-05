@@ -85,6 +85,13 @@ Build the jars with the **prod profile**, then the images:
 docker compose -f docker-compose.prod.yml --env-file .env.prod build
 ```
 
+On PowerShell the `-D` arguments must be quoted, or it splits them at the first dot and
+Maven reports `Unknown lifecycle phase ".profile=prod"`:
+
+```powershell
+.\mvnw.cmd clean package "-DskipTests" "-Dquarkus.profile=prod"
+```
+
 The profile matters beyond configuration. `DevIdentityAugmentor` carries
 `@IfBuildProfile("dev")`, so a prod build omits the class entirely and the `X-Dev-Roles`
 headers physically cannot work however the container is configured. A dev-built jar
